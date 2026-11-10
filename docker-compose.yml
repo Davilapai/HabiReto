@@ -40,5 +40,17 @@ services:
       retries: 5
       start_period: 10s
 
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: habi_web
+    restart: always
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+
 volumes:
   postgres_data:
