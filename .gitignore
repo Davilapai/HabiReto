@@ -1,0 +1,11 @@
+# Graphify: artefactos generados
+/graphify-out/
+
+# Serena: configuración y estado local
+/.serena/project.local.yml
+/.serena/memories/
+
+# Antigravity: configuración MCP local
+/.agents/mcp_config.json
+/.agents/mcp_config.json.bak
+
