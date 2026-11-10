@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HabiCapital P2P Transfer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-6">
+  <div class="max-w-4xl mx-auto space-y-6">
+    <header class="border-b border-slate-800 pb-4 flex justify-between items-center">
+      <h1 class="text-2xl font-bold tracking-tight">HabiCapital Transfer Core</h1>
+      <span class="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-1 rounded">ACID Engine Ready</span>
+    </header>
+
+    <!-- Grid: Crear Cuenta / Recargar / Transferir -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+        <h2 class="text-sm font-semibold mb-2">Crear Cuenta</h2>
+        <button id="btnCreateAccount" class="w-full bg-indigo-600 hover:bg-indigo-500 py-2 rounded text-sm font-medium transition">Nueva Cuenta</button>
+      </div>
+
+      <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+        <h2 class="text-sm font-semibold mb-2">Cargar Saldo (Simulado)</h2>
+        <input id="topupAccountId" placeholder="Account UUID" class="w-full mb-2 p-1.5 bg-slate-900 border border-slate-700 rounded text-xs" />
+        <input id="topupAmount" type="number" placeholder="Monto (COP)" class="w-full mb-2 p-1.5 bg-slate-900 border border-slate-700 rounded text-xs" />
+        <button id="btnTopup" class="w-full bg-slate-700 hover:bg-slate-600 py-1.5 rounded text-xs font-medium">Recargar</button>
+      </div>
+
+      <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+        <h2 class="text-sm font-semibold mb-2">Transferencia Inmediata</h2>
+        <input id="srcAccount" placeholder="Origen UUID" class="w-full mb-1.5 p-1.5 bg-slate-900 border border-slate-700 rounded text-xs" />
+        <input id="dstAccount" placeholder="Destino UUID" class="w-full mb-1.5 p-1.5 bg-slate-900 border border-slate-700 rounded text-xs" />
+        <input id="transferAmount" type="number" placeholder="Monto (COP)" class="w-full mb-1.5 p-1.5 bg-slate-900 border border-slate-700 rounded text-xs" />
+        <button id="btnTransfer" class="w-full bg-indigo-600 hover:bg-indigo-500 py-1.5 rounded text-xs font-medium">Transferir</button>
+      </div>
+    </div>
+
+    <!-- Log de Transacciones y Estado -->
+    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+      <h2 class="text-sm font-semibold mb-2">Consola de Eventos Transaccionales</h2>
+      <pre id="logOutput" class="bg-slate-950 p-3 rounded text-xs text-emerald-400 font-mono h-48 overflow-y-auto border border-slate-800">Sistema listo. Esperando operaciones...</pre>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -21,13 +21,16 @@
 
 ## 3. RTK — Token-efficient command execution
 
-- Use RTK for supported terminal commands whenever the Antigravity hook is available.
+- Use RTK for supported terminal commands when its Antigravity hook works correctly.
 - Submit normal commands without manually adding the `rtk` prefix.
-- Let the Antigravity PreToolUse hook rewrite supported commands automatically.
-- Do not bypass the hook or manually invoke RTK unless troubleshooting.
-- If a command fails because RTK is unavailable, inspect the executable and PATH before retrying.
-- RTK executable:
-  `/home/davilapai/.local/bin/rtk`
+- Do not manually invoke RTK when the hook is already responsible for rewriting commands.
+- If a command fails with `rtk: command not found` or exit code 127:
+  - Stop retrying the same command.
+  - Do not assume the PATH is the cause.
+  - Check whether the execution environment can access the RTK binary.
+  - Do not modify the hook or sandbox configuration without authorization.
+  - Report the limitation and provide a host-side command when necessary.
+- Do not claim RTK is operational merely because the hook intercepts commands.
 - Never claim token savings without checking `rtk gain`.
 
 ## 4. Graphify
@@ -44,7 +47,9 @@ At task completion:
 - Do not rebuild the graph for trivial local changes.
 - Use incremental updates when an existing graph is available.
 - If no graph exists, initialize it only when sufficient indexable project content is available.
-- Prefer `graphify update` for existing graphs and avoid unnecessary full extractions.
+- Use the incremental update mechanism supported by the installed Graphify version.
+- Verify available commands through the CLI help when necessary.
+- Avoid full graph extraction when an incremental update is sufficient.
 - Never claim the graph was updated unless the operation succeeded.
 
 ## 5. Engineering workflow
@@ -59,10 +64,14 @@ At task completion:
 ## 6. Python quality
 
 - Use Pyright for static type checking whenever Python code is involved.
-- Pyright is installed globally through mise at:
-  `/home/davilapai/.local/share/mise/installs/node/26.5.0/bin/pyright`
-- Invoke Pyright using its absolute path because the agent's PATH may not include mise.
-- Verify that the executable is accessible before running it.
+- First check whether Pyright is available in the current execution environment.
+- Prefer the project's configured development environment when available.
+- Do not assume host-installed executables are accessible inside the sandbox.
+- If Pyright is unavailable:
+  - Do not silently skip type checking.
+  - Do not install another copy without authorization.
+  - Report the limitation.
+  - Provide the exact command for host-side validation when possible.
 - Follow the project's configured Python version and type-checking settings.
 - Run Pyright on relevant Python files after modifying Python code.
 - Resolve reported type errors; do not introduce broad suppressions to hide them.
@@ -91,3 +100,61 @@ At the end of each task, report:
 - Which validations were executed and their results.
 - Whether Graphify was queried or updated.
 - Any unresolved issue or limitation.
+
+## 10. Financial domain integrity
+
+Financial correctness is a non-negotiable system requirement. The system must never lose or duplicate money.
+
+### Monetary representation
+- Never use floating-point types (`float`, `double`) for monetary amounts.
+- Use exact representations: 64-bit integers (`BigInteger`) representing base cents, or fixed-point decimals (`Decimal` / `Numeric(18, 2)`).
+- Enforce explicit currency (e.g., ISO-4217 `COP`) and precision scales.
+- Validate strictly positive amounts for transfers and top-ups ($amount > 0$).
+- Reject implicit currency conversions and negative mutation inputs at both schema and model boundaries.
+
+### Concurrency and persistence control
+- Concurrency control must be enforced at the persistence layer using strict transactional isolation and explicit row-level locking.
+- Prevent deadlocks during multi-account operations by strictly ordering lock acquisition (e.g., always lock the lower `account_id` before the higher `account_id` using `SELECT ... FOR UPDATE`).
+- Never rely on application-level or in-memory locks (such as Python's `asyncio.Lock` or `threading.Lock`) for balance mutations; they fail across multiple workers or instances.
+- Ensure defense-in-depth: database tables holding balances or ledger tallies must declare a SQL check constraint (e.g., `CHECK (balance >= 0)`) so the persistence layer itself physically rejects negative balances.
+
+### Transactions and idempotency
+- All operations affecting accounts, balances, and history must execute within an atomic database transaction.
+- A failed operation must roll back completely without partial state changes.
+- Every mutating financial operation (transfers, payments, top-ups) must support an `Idempotency-Key` header or parameter backed by an idempotency store. Identical requests must return the original cached response without re-executing ledger operations.
+- Never assume an HTTP 200 response alone proves financial consistency; audit transaction logs and balance invariants.
+
+### Ledger and auditability
+- Follow an append-only transaction ledger or double-entry model.
+- Transaction records must be immutable: never silently update, overwrite, or delete historical entries.
+- Adjustments or reversals must be recorded as explicit compensating transactions referencing the original transaction identifier.
+- Preserve contextual metadata (e.g., purpose, category, social context) alongside transaction logs.
+
+### Testing financial invariants
+- Test standard debit/credit flows, zero-amount rejections, and insufficient-funds conditions.
+- Test mid-transaction failure injection: verify that database errors midway through a transfer leave all balances intact.
+- Concurrency stress tests must assert the zero-sum balance invariant:
+  $$\sum \text{Balances}_{\text{final}} = \sum \text{Balances}_{\text{initial}} + \text{Total Deposits} - \text{Total Withdrawals}$$
+  Under parallel bursts, exactly $N$ allowable transactions must succeed and all excess transactions must fail gracefully with zero cents lost or created.
+
+### Scope boundaries
+- Simulated top-ups must remain explicitly simulated; never integrate external payment gateways or third-party webhooks unless explicitly instructed.
+- Do not introduce financial rules or domain models that have not been established in the core specifications.
+
+## 11. Security, authorization, and challenge scope
+
+- Challenge scope guard: Do not waste time implementing complex authentication schemes (full OAuth2, JWT refresh flows, password reset emails) unless explicitly requested. Use clean identity mocking (e.g., `X-User-Id` header or simple API tokens) to maintain focus on the financial core.
+- Enforce boundary authorization: verify that the acting identity owns the source account before any debit or transfer operation.
+- Validate all incoming payloads against strict Pydantic/dataclass schemas; never trust client-provided balances, timestamps, or account ownership claims.
+- Use parameterized SQL queries exclusively (via SQLAlchemy or equivalent ORM) to prevent SQL injection.
+- Never hardcode secrets, private keys, or credentials in codebase files.
+- Sanitize error messages: never leak stack traces, database schemas, or internal server state to client responses.
+
+## 12. AI-assisted development and live defense
+
+- Treat all AI-generated code, schemas, and queries as unverified until validated with tests.
+- Do not accept architectural compromises or patterns you cannot explain during a code review.
+- Actively verify that the AI did not omit database transactions, locks, or error handling in favor of concise code.
+- When an AI suggestion introduces subtle concurrency bugs or floating-point arithmetic, correct it explicitly.
+- Document key architectural decisions, trade-offs, and edge cases to ensure confident defense during the 60-minute live pair programming and interview session.
+- Keep the implementation clean and modular so that sudden live-coding requirement changes can be added without friction.
