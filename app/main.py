@@ -47,6 +47,7 @@ app.include_router(api_router)
 
 
 @app.get("/healthcheck", tags=["Health"])
+@app.get("/api/v1/healthcheck", tags=["Health"])
 async def healthcheck() -> dict[str, str]:
     """Sonda de monitoreo para orquestadores y balanceadores de carga."""
     return {"status": "ok"}
