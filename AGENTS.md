@@ -36,20 +36,27 @@
 
 ## 4. Graphify
 
-At task start:
+### Execution environment and binary access
+- Graphify is installed in the host user space via `uv tool` as package `graphifyy`.
+- Binary location: `~/.local/bin/graphify` or via `uv tool run --from graphifyy graphify`.
+- Do not assume `graphify` is directly available inside the sandboxed PATH (`~/.local/` is outside sandbox boundaries).
+- If running in a sandboxed environment without direct PATH access:
+  - Request elevation (`BypassSandbox: true`) to execute `uv tool run --from graphifyy graphify` or `~/.local/bin/graphify`.
+  - Alternatively, if sandbox restrictions block execution, provide the exact command for the user to run on the host.
+- Never attempt an incremental update (`--update`) if `graphify-out/graph.json` does not exist yet.
+
+### At task start:
 - Identify the project root.
 - Check whether `graphify-out/graph.json` exists.
 - If it exists, query the graph first for codebase and architecture questions.
 - Use focused queries, paths and explanations instead of dumping the entire graph.
 - If it does not exist, inspect the relevant source files. Do not attempt graph queries against a missing graph.
 
-At task completion:
+### At task completion:
 - Update Graphify after changes that affect architecture, module relationships, interfaces, dependencies or data models.
 - Do not rebuild the graph for trivial local changes.
-- Use incremental updates when an existing graph is available.
-- If no graph exists, initialize it only when sufficient indexable project content is available.
-- Use the incremental update mechanism supported by the installed Graphify version.
-- Verify available commands through the CLI help when necessary.
+- Use incremental updates (`--update`) ONLY when a valid existing graph (`graphify-out/graph.json`) is available.
+- If no graph exists, initialize it (`graphify .`) only when sufficient indexable project content is available.
 - Avoid full graph extraction when an incremental update is sufficient.
 - Never claim the graph was updated unless the operation succeeded.
 
