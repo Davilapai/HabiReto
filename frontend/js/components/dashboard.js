@@ -89,12 +89,12 @@ export function initDashboard(containerId) {
 
           <!-- Tarjeta de Transferencia P2P -->
           <div class="bank-card">
-            <h2 style="font-size:18px;font-weight:600;color:#111827;margin:0 0 16px 0;">Transferencia Persona a Persona (P2P)</h2>
+            <h2 style="font-size:18px;font-weight:600;color:#111827;margin:0 0 16px 0;">Transferencia</h2>
             <form id="transferForm" style="display:flex;flex-direction:column;gap:14px;">
               <div>
                 <label class="bank-label" for="transferRecipient">Destinatario:</label>
                 <select id="transferRecipient" class="bank-select" required>
-                  <option value="" disabled selected>Selecciona un destinatario...</option>
+                  <option value="" disabled selected>Selecciona a quien</option>
                   ${availableRecipients
                     .map(
                       (r) =>
@@ -110,7 +110,7 @@ export function initDashboard(containerId) {
               </div>
 
               <div>
-                <label class="bank-label" for="transferMotive">Concepto o motivo:</label>
+                <label class="bank-label" for="transferMotive">Concepto:</label>
                 <input id="transferMotive" class="bank-input" type="text" placeholder="Ej. Cuota servicios, Almuerzo" maxlength="100" />
               </div>
 
@@ -126,8 +126,7 @@ export function initDashboard(containerId) {
         <div class="bank-card">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
             <div>
-              <h2 style="font-size:18px;font-weight:600;color:#111827;margin:0;">Extracto de Movimientos (Libro Mayor)</h2>
-              <span style="font-size:13px;color:#667085;">Registro auditable con saldos posteriores (balance_after)</span>
+              <h2 style="font-size:18px;font-weight:600;color:#111827;margin:0;">Movimientos</h2>
             </div>
             <button type="button" id="btnRefreshHistory" class="bank-btn bank-btn-secondary" style="font-size:12px;padding:6px 12px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
