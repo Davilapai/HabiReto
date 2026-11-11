@@ -420,16 +420,21 @@ class InMemoryAsyncSession:
 
         # 4. Consulta de Cow
         if selected_name == "Cow" or "cows" in stmt_str:
+            has_uuid_param = False
             for val in params.values():
-                if isinstance(val, uuid.UUID) and val in self.cows:
-                    cow = self.cows[val]
-                    cow.members = [m for m in self.members.values() if m.cow_id == cow.id]
-                    for m in cow.members:
-                        if m.user_id in self.users:
-                            m.user = self.users[m.user_id]
-                    if cow.vault_account_id in self.accounts:
-                        cow.vault_account = self.accounts[cow.vault_account_id]
-                    return MockResult(item=cow, items=[cow])
+                if isinstance(val, uuid.UUID):
+                    has_uuid_param = True
+                    if val in self.cows:
+                        cow = self.cows[val]
+                        cow.members = [m for m in self.members.values() if m.cow_id == cow.id]
+                        for m in cow.members:
+                            if m.user_id in self.users:
+                                m.user = self.users[m.user_id]
+                        if cow.vault_account_id in self.accounts:
+                            cow.vault_account = self.accounts[cow.vault_account_id]
+                        return MockResult(item=cow, items=[cow])
+            if has_uuid_param:
+                return MockResult(item=None, items=[])
 
             all_cows = list(self.cows.values())
             for cow in all_cows:
