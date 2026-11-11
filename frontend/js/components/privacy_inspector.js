@@ -21,7 +21,12 @@ export function initPrivacyInspector(containerId) {
     const cows = store.getState().cows || [];
     // Busca la vaca anónima de prueba
     const anonCow = cows.find((c) => c.visibility_type === "ANONYMOUS");
-    if (!anonCow) return;
+    if (!anonCow) {
+      currentCow = null;
+      rawPayload = null;
+      render();
+      return;
+    }
 
     isLoading = true;
     try {

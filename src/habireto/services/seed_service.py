@@ -182,14 +182,33 @@ class SeedService:
             session.add(pub_cow)
             await session.flush()
 
-            # Vincular a Alice como CREATOR
-            member_alice = CowMember(
-                cow_id=pub_cow.id,
-                user_id=ALICE_USER_ID,
-                role=CowMemberRole.CREATOR.value,
-                total_contributed=0,
-            )
-            session.add(member_alice)
+            # Vincular a Alice como CREATOR y a Bob y Charlie como miembros invitados
+            for uid, role in [
+                (ALICE_USER_ID, CowMemberRole.CREATOR.value),
+                (BOB_USER_ID, CowMemberRole.CONTRIBUTOR.value),
+                (CHARLIE_USER_ID, CowMemberRole.CONTRIBUTOR.value),
+            ]:
+                session.add(
+                    CowMember(
+                        cow_id=pub_cow.id,
+                        user_id=uid,
+                        role=role,
+                        total_contributed=0,
+                    )
+                )
+            await session.flush()
+        else:
+            for uid in [BOB_USER_ID, CHARLIE_USER_ID]:
+                m_stmt = select(CowMember).where(CowMember.cow_id == pub_cow.id, CowMember.user_id == uid)
+                if not (await session.execute(m_stmt)).scalar_one_or_none():
+                    session.add(
+                        CowMember(
+                            cow_id=pub_cow.id,
+                            user_id=uid,
+                            role=CowMemberRole.CONTRIBUTOR.value,
+                            total_contributed=0,
+                        )
+                    )
             await session.flush()
 
         # 2. Vaca Anónima: Viaje Secreto de Cumpleaños (Creador: Charlie)
@@ -223,14 +242,33 @@ class SeedService:
             session.add(anon_cow)
             await session.flush()
 
-            # Vincular a Charlie como CREATOR
-            member_charlie = CowMember(
-                cow_id=anon_cow.id,
-                user_id=CHARLIE_USER_ID,
-                role=CowMemberRole.CREATOR.value,
-                total_contributed=0,
-            )
-            session.add(member_charlie)
+            # Vincular a Charlie como CREATOR y a Alice y Bob como miembros invitados
+            for uid, role in [
+                (CHARLIE_USER_ID, CowMemberRole.CREATOR.value),
+                (ALICE_USER_ID, CowMemberRole.CONTRIBUTOR.value),
+                (BOB_USER_ID, CowMemberRole.CONTRIBUTOR.value),
+            ]:
+                session.add(
+                    CowMember(
+                        cow_id=anon_cow.id,
+                        user_id=uid,
+                        role=role,
+                        total_contributed=0,
+                    )
+                )
+            await session.flush()
+        else:
+            for uid in [ALICE_USER_ID, BOB_USER_ID]:
+                m_stmt = select(CowMember).where(CowMember.cow_id == anon_cow.id, CowMember.user_id == uid)
+                if not (await session.execute(m_stmt)).scalar_one_or_none():
+                    session.add(
+                        CowMember(
+                            cow_id=anon_cow.id,
+                            user_id=uid,
+                            role=CowMemberRole.CONTRIBUTOR.value,
+                            total_contributed=0,
+                        )
+                    )
             await session.flush()
 
         return {

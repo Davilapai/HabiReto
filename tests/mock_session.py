@@ -420,22 +420,6 @@ class InMemoryAsyncSession:
 
         # 4. Consulta de Cow
         if selected_name == "Cow" or "cows" in stmt_str:
-            has_uuid_param = False
-            for val in params.values():
-                if isinstance(val, uuid.UUID):
-                    has_uuid_param = True
-                    if val in self.cows:
-                        cow = self.cows[val]
-                        cow.members = [m for m in self.members.values() if m.cow_id == cow.id]
-                        for m in cow.members:
-                            if m.user_id in self.users:
-                                m.user = self.users[m.user_id]
-                        if cow.vault_account_id in self.accounts:
-                            cow.vault_account = self.accounts[cow.vault_account_id]
-                        return MockResult(item=cow, items=[cow])
-            if has_uuid_param:
-                return MockResult(item=None, items=[])
-
             all_cows = list(self.cows.values())
             for cow in all_cows:
                 cow.members = [m for m in self.members.values() if m.cow_id == cow.id]
@@ -444,6 +428,24 @@ class InMemoryAsyncSession:
                         m.user = self.users[m.user_id]
                 if cow.vault_account_id in self.accounts:
                     cow.vault_account = self.accounts[cow.vault_account_id]
+
+            # Si se consulta por cow.id explícito:
+            for val in params.values():
+                if isinstance(val, uuid.UUID) and val in self.cows:
+                    cow = self.cows[val]
+                    return MockResult(item=cow, items=[cow])
+
+            # Si se consulta filtrando por miembro participante:
+            for val in params.values():
+                if isinstance(val, uuid.UUID) and ("cow_members" in stmt_str or "members" in stmt_str or val in self.users):
+                    matching = [c for c in all_cows if any(m.user_id == val for m in c.members)]
+                    return MockResult(item=matching[0] if matching else None, items=matching)
+
+            # Si se pasó un UUID y no coincidió con ninguna vaca ni usuario:
+            has_uuid = any(isinstance(v, uuid.UUID) for v in params.values())
+            if has_uuid:
+                return MockResult(item=None, items=[])
+
             return MockResult(item=all_cows[0] if all_cows else None, items=all_cows)
 
         # 5. Consulta de CowMember
@@ -472,8 +474,18 @@ class InMemoryAsyncSession:
         if selected_name == "User" or "users" in stmt_str:
             for val in params.values():
                 if isinstance(val, uuid.UUID) and val in self.users:
-                    return MockResult(item=self.users[val])
-            return MockResult(item=None)
+                    u = self.users[val]
+                    u.accounts = [a for a in self.accounts.values() if a.user_id == u.id]
+                    return MockResult(item=u, items=[u])
+                if isinstance(val, str):
+                    for u in self.users.values():
+                        if u.email == val or u.phone_number == val:
+                            u.accounts = [a for a in self.accounts.values() if a.user_id == u.id]
+                            return MockResult(item=u, items=[u])
+            all_users = list(self.users.values())
+            for u in all_users:
+                u.accounts = [a for a in self.accounts.values() if a.user_id == u.id]
+            return MockResult(item=all_users[0] if all_users else None, items=all_users)
 
         # 7. Consulta de LedgerEntry
         if selected_name == "LedgerEntry" or "ledger_entries" in stmt_str:

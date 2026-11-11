@@ -46,6 +46,7 @@ async def create_cow(
         target_amount=payload.target_amount,
         visibility_type=payload.visibility_type,
         deadline=payload.deadline,
+        invited_user_ids=payload.invited_user_ids,
     )
 
     # Carga completa para serialización
@@ -104,8 +105,16 @@ async def list_cows(
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[CowDetailResponse]:
-    """Lista fondos colaborativos resolviendo la privacidad según el usuario autenticado."""
-    cows = await CowService.list_cows(session, status=status_filter)
+    """Lista fondos colaborativos resolviendo la privacidad según el usuario autenticado.
+
+    Aplica el filtro de visibilidad por membresía: solo se listan las iniciativas donde
+    el usuario solicitante es el creador o un participante formalmente invitado.
+    """
+    cows = await CowService.list_cows(
+        session,
+        status=status_filter,
+        participant_user_id=current_user_id,
+    )
     responses: list[CowDetailResponse] = []
     for c in cows:
         vault_balance = c.vault_account.balance if c.vault_account is not None else 0

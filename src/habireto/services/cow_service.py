@@ -53,6 +53,7 @@ class CowService:
         target_amount: int,
         visibility_type: CowVisibilityType,
         deadline: datetime | None = None,
+        invited_user_ids: list[uuid.UUID] | None = None,
     ) -> Cow:
         """Crea un nuevo fondo colaborativo ("Vaca") con su cuenta bóveda custodia dedicada.
 
@@ -69,6 +70,7 @@ class CowService:
             target_amount: Meta monetaria en centavos COP (debe ser estrictamente > 0).
             visibility_type: Política de privacidad (PUBLIC o ANONYMOUS).
             deadline: Fecha límite opcional fijada para completar el objetivo.
+            invited_user_ids: Lista opcional de identificadores de usuarios invitados a participar.
 
         Returns:
             Cow: Entidad de la Vaca creada y vinculada a su cuenta bóveda.
@@ -123,6 +125,19 @@ class CowService:
             role=CowMemberRole.CREATOR.value,
         )
         session.add(creator_member)
+
+        # Registra a los participantes invitados como miembros con rol CONTRIBUTOR
+        if invited_user_ids:
+            for invited_id in invited_user_ids:
+                if invited_id != creator_user_id:
+                    invited_member = CowMember(
+                        cow_id=cow.id,
+                        user_id=invited_id,
+                        total_contributed=0,
+                        role=CowMemberRole.CONTRIBUTOR.value,
+                    )
+                    session.add(invited_member)
+
         await session.flush()
 
         return cow
@@ -551,12 +566,18 @@ class CowService:
         return (await session.execute(stmt)).scalar_one_or_none()
 
     @staticmethod
-    async def list_cows(session: AsyncSession, status: str | None = None) -> list[Cow]:
+    async def list_cows(
+        session: AsyncSession,
+        status: str | None = None,
+        participant_user_id: uuid.UUID | None = None,
+    ) -> list[Cow]:
         """Recupera el listado de fondos colaborativos con carga ansiosa de relaciones.
 
         Args:
             session: Sesión asíncrona de base de datos activa.
             status: Filtro opcional por estado operativo (ej. ACTIVE, COMPLETED).
+            participant_user_id: Identificador opcional para restringir la consulta
+                exclusivamente a las vacas en las que el usuario es creador o miembro invitado.
 
         Returns:
             list[Cow]: Lista de Vacas ordenadas por fecha de creación descendente.
@@ -571,4 +592,6 @@ class CowService:
         )
         if status is not None:
             stmt = stmt.where(Cow.status == status)
+        if participant_user_id is not None:
+            stmt = stmt.where(Cow.members.any(CowMember.user_id == participant_user_id))
         return list((await session.execute(stmt)).scalars().all())

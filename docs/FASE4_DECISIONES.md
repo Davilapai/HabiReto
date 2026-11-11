@@ -203,4 +203,33 @@ Para garantizar que el evaluador pueda ejecutar la aplicación de inmediato tant
 - [x] **Fondos Colaborativos:** Creación, aportes y desembolso vinculados a cuentas bóveda dedicadas (`COW_VAULT`).
 - [x] **Privacidad Zero-Trust:** Validación de que los aportes individuales en vacas anónimas viajan como `null` en el payload HTTP para terceros y el creador.
 - [x] **Modern Digital Banking UI:** Erradicación completa de Glassmorphism, adopción de la paleta oficial (Navy, Surface, Background, Border), tipografía Inter con cifras tabulares y cumplimiento de las directivas de Impeccable Craft Floor.
-- [x] **Pruebas Automatizadas:** 91 pruebas unitarias pasando exitosamente y 0 errores en Pyright.
+- [x] **Pruebas Automatizadas:** 93 pruebas unitarias e integrales pasando exitosamente y 0 errores en Pyright.
+
+---
+
+## 8. Mejoras de Usabilidad, Privacidad de Vacas y Onboarding Dinámico
+
+### 8.1. Soporte Universal de Cifras Monetarias Cerradas (`step="any"`)
+- **Problema Detectado:** Al tener `min="1"` y `step="1000"`, el algoritmo de validación de HTML5 rechazaba números cerrados como `200000` o `50000` porque `(200000 - 1) % 1000 !== 0`, solicitando valores terminados en 1 (`199001`, `200001`).
+- **Solución Implementada:** Se configuró `step="any"` manteniendo `min="1"` (o `min="0"` para saldos iniciales) en todos los inputs numéricos (`#cowTargetAmount`, `#contribAmount`, `#transferAmount`, `#regInitialBalance`). La integridad de enteros se valida en JavaScript (`Math.floor(Number(v))`) y a nivel de esquema Pydantic en backend (`int`).
+
+### 8.2. Actualización Reactiva Inmediata del Saldo
+- **Problema Detectado:** Las recargas rápidas (`+$50.000 COP`) obligaban a presionar F5 debido a que las re-consultas GET secundarias podían ser atendidas por la caché HTTP local del navegador.
+- **Solución Implementada:**
+  1. Se añadieron directivas `cache: "no-store"` y cabeceras `Cache-Control: "no-cache, no-store, must-revalidate"` en el cliente `api.js`.
+  2. El componente del dashboard consume de inmediato el objeto `BalanceResponse` retornado por el backend en `POST /accounts/{account_id}/load`, actualizando el store (`store.setState({ balance: res.balance })`) de forma atómica en menos de 50 ms.
+
+### 8.3. Privacidad de Vacas por Membresía y Selector de Invitados
+- **Problema Detectado:** La lista de vacas (`GET /api/v1/cows`) exponía todas las iniciativas registradas globalmente, sin importar quién las había creado o quién había sido invitado.
+- **Solución Implementada:**
+  1. **Esquema:** `CowCreateRequest` recibe `invited_user_ids: list[uuid.UUID]`.
+  2. **Servicio:** `CowService.create_cow` registra a los usuarios invitados con rol `CONTRIBUTOR`.
+  3. **Control de Acceso:** `CowService.list_cows` y `GET /api/v1/cows` aplican `participant_user_id=current_user_id`, filtrando con `Cow.members.any(CowMember.user_id == current_user_id)`. Cada usuario visualiza únicamente las vacas en las que participa formalmente.
+  4. **Interfaz:** El modal de creación de vaca incluye una lista de contactos disponibles (`store.getUsers()`, excluyendo al creador) con casillas de verificación para seleccionar a los invitados.
+
+### 8.4. Onboarding y Registro Dinámico de Personas ("Registrar Persona")
+- **Funcionalidad Agregada:** Capacidad de registrar en caliente a nuevos usuarios y cuentas sin depender exclusivamente de los 3 usuarios semilla.
+- **Arquitectura:**
+  1. **Backend:** Endpoint `GET /api/v1/users` que lista todos los usuarios con su cuenta bancaria personal principal, y `POST /api/v1/users` (que delega a `AccountService.create_user_with_account`).
+  2. **Frontend:** Botón institucional `+ Registrar Persona` en la cabecera que abre un modal bancario (Nombre completo, Correo, Teléfono celular y Saldo inicial en COP).
+  3. **Reactividad:** El nuevo usuario se añade al estado global `store.addUser(newUser)`, quedando disponible al instante en el selector de identidades para operar en su nombre, como destinatario en transferencias P2P y en las invitaciones a vacas.
