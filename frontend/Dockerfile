@@ -5,6 +5,8 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copiar los assets estáticos del frontend
 COPY index.html app.js /usr/share/nginx/html/
+COPY styles.css /usr/share/nginx/html/
+COPY js /usr/share/nginx/html/js/
 
 EXPOSE 80
 
