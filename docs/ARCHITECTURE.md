@@ -187,3 +187,11 @@ Gracias a la arquitectura por capas y al modelo de partida doble, el sistema est
    - *Cómo se resuelve:* En `CowService.contribute`, se verifica si el usuario es nuevo y si `len(cow.members) >= cow.max_participants`.
 4. **Vencimiento y Reembolso Automático**:
    - *Cómo se resuelve:* Método en `CowService` que evalúa `cow.deadline < func.now()` y ejecuta `cancel_and_refund` de forma idempotente.
+
+---
+
+## 6. Documentación Detallada de la Fase 1: Servicios Transaccionales y Migraciones
+
+Para un análisis formal y matemático de la prevención de deadlocks por ordenamiento lexicográfico, la deduplicación con SHA-256 y la arquitectura contable de las cuentas bóveda, consultar el documento complementario:
+👉 **[Decisiones Técnicas, Integridad Financiera y Prevención de Deadlocks — Fase 1](FASE1_DECISIONES.md)**
+
