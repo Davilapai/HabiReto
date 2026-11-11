@@ -190,3 +190,56 @@ HabiReto protege las mutaciones financieras en dos niveles complementarios:
 | **Capa de Servicios** | `if account.balance < amount: raise InsufficientFundsError` | Validación de reglas de negocio y montos disponibles en memoria. | Durante la ejecución del caso de uso. |
 | **Capa de Concurrencia** | `SELECT ... FOR UPDATE` ordenado por UUID | Condiciones de carrera y deadlocks entre transacciones simultáneas. | En el motor relacional antes de mutar filas. |
 | **Capa de Persistencia Físico** | `CONSTRAINT ck_accounts_balance_non_negative CHECK (balance >= 0)` | **Defensa física inquebrantable**: Aborta físicamente la transacción si cualquier bug de código intentase dejar un saldo en rojo. | Al momento de ejecutar el `UPDATE/INSERT` en PostgreSQL. |
+
+---
+
+## 7. Trazabilidad, Auditoría Legal y Cumplimiento Regulatorio (SARLAFT / DIAN) en Vacas
+
+### 7.1. Marco Regulatorio y Obligación Legal
+Por mandato de la normativa financiera colombiana (Superintendencia Financiera de Colombia - SFC, Estatuto Tributario / DIAN e instructivos de SARLAFT / SAGRILAFT para prevención de lavado de activos y financiación del terrorismo), **ninguna entidad financiera o pasarela de pagos puede operar transacciones opacas o no identificables**. Todo movimiento de fondos entre personas debe contar con una pista de auditoría forense inmutable.
+
+### 7.2. Principio de Separación: Privacidad Social (UI) vs Auditoría Contable (Ledger)
+Existe una distinción fundamental y no negociable entre la **experiencia de usuario** y el **núcleo de cumplimiento contable**:
+
+1. **En la Capa de Presentación (UI / API Response):**
+   - Para las Vacas configuradas como `ANONYMOUS`, el sistema aplica una máscara de privacidad en el servidor (`Server-Side Masking`).
+   - El objetivo es puramente social: evitar la presión de grupo, la vergüenza o el sesgo en colectas sorpresa o regalos familiares. Ni los demás miembros ni el creador de la vaca ven cuánto aportó un tercero.
+2. **En la Capa de Persistencia y Libro Mayor (Base de Datos / Compliance):**
+   - **La transacción NUNCA es anónima**.
+   - Cada aporte ejecutado a través de `CowService.contribute` genera de forma obligatoria:
+     - Un registro maestro en la tabla `transactions` con `transaction_type = COW_CONTRIBUTION`.
+     - `source_account_id`: Identificador unívoco de la cuenta bancaria del aportante.
+     - `destination_account_id`: Identificador de la cuenta custodia bóveda (`COW_VAULT`).
+     - `amount`: Monto exacto debitado/acreditado en centavos COP.
+     - `cow_id`: Identificador del fondo colaborativo receptor.
+     - `created_at`: Marca temporal certificada con zona horaria.
+     - `metadata_json`: Contiene el `contributor_user_id` y contexto de la operación.
+   - Dos asientos contables de partida doble inmutables en `ledger_entries`:
+     - Asiento `DEBIT` en la cuenta personal del aportante con su saldo posterior (`balance_after`).
+     - Asiento `CREDIT` en la cuenta bóveda con su saldo posterior (`balance_after`).
+   - En cualquier instante, un auditor judicial, oficial de cumplimiento SARLAFT o la DIAN pueden reconstruir con precisión matemática el 100% de los flujos de dinero hacia y desde cualquier Vaca.
+
+---
+
+## 8. Justificación Arquitectónica de Alembic como Motor de Migraciones
+
+### 8.1. Análisis Comparativo de Alternativas de Gestión de Esquema
+
+| Mecanismo Evaluado | Ventajas Aparentes | Riesgos Críticos en Sistemas Financieros | Veredicto |
+| :--- | :--- | :--- | :--- |
+| **Scripts SQL manuales (`.sql` sueltos)** | Simplicidad inicial sin dependencias de librerías. | - Riesgo extremo de *schema drift* entre entornos (local, staging, producción).<br>- Ausencia de registro transaccional de qué migraciones ya fueron aplicadas.<br>- Propenso a errores humanos en despliegues automatizados (CI/CD). | **RECHAZADO** |
+| **`Base.metadata.create_all()` en arranque** | Cero configuración; genera tablas automáticamente al iniciar la API. | - **Incapaz de mutar esquemas**: Solo crea tablas si no existen; ignora columnas añadidas, tipos modificados o restricciones alteradas.<br>- No soporta rollbacks (`downgrade`).<br>- Bloquea el arranque del contenedor e impide despliegues *Zero-Downtime*. | **RECHAZADO** |
+| **Alembic (SQLAlchemy Migration Engine)** | - Control de versiones formal de DDL.<br>- Migraciones reversibles (`upgrade`/`downgrade`).<br>- Soporte asíncrono con `asyncpg`. | - Requiere configuración inicial y disciplina de versionamiento. | **ADOPTADO** |
+
+### 8.2. Justificación Técnica de la Adopción de Alembic
+1. **Control de Versiones Atómico e Inmutable del DDL:**
+   - Cada cambio sobre el catálogo relacional se formaliza como un archivo de migración versionado (ej. `001_initial_schema.py`) con identificador de revisión único (`revision`) y apuntador a la revisión previa (`down_revision`), formando un grafo acíclico dirigido (DAG) verificable en Git.
+2. **Trazabilidad en Base de Datos (`alembic_version`):**
+   - PostgreSQL registra en la tabla `alembic_version` el hash exacto del esquema activo. Cualquier discrepancia o intento de correr una migración desordenada es abortado antes de comprometer los datos de producción.
+3. **Compatibilidad Nativa con el Stack Asíncrono (`asyncpg`):**
+   - Configurado en `alembic/env.py` para operar sobre `create_async_engine` y `connection.run_sync()`, compartiendo la misma cadena de conexión (`DATABASE_URL`) y pool optimizado de la aplicación.
+4. **Resiliencia en Despliegues y Rollback Inmediato (`downgrade()`):**
+   - En caso de que un despliegue falle en producción, `alembic downgrade -1` permite revertir atómicamente el esquema al estado previo sin requerir restauración manual de backups completos.
+5. **Cumplimiento de Auditoría Regulatoria de Infraestructura:**
+   - En auditorías bancarias (SOC 2, ISO 27001, SFC), cada alteración a tablas financieras (como relajar un constraint o alterar un tipo de dato monetario) debe estar respaldada por un commit auditable en Git con autor, fecha, justificación técnica y script determinista. Alembic garantiza este estándar de grado financiero.
+
