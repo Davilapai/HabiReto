@@ -5,6 +5,7 @@ description = "HabiReto P2P Transfer Platform"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.13.0",
     "asyncpg>=0.30.0",
     "fastapi>=0.115.0",
     "pydantic>=2.9.0",

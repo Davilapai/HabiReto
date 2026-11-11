@@ -162,6 +162,23 @@ flowchart TD
 
 ---
 
+### 3.8. Ciclo de Vida del DDL: Adopción de Alembic para Migraciones Asíncronas
+- **Decisión:** Utilizar Alembic en modo asíncrono (`asyncpg`) leyendo la metadata centralizada desde `Base.metadata`.
+- **Por qué NO `Base.metadata.create_all()` ni scripts `.sql` manuales:**
+  - `create_all()` no altera esquemas existentes, no modifica tipos de columnas, no actualiza índices ni permite operaciones reversibles (`downgrade()`).
+  - Los scripts `.sql` manuales carecen de control de versiones atómico, provocan *schema drift* entre ambientes y no dejan registro en la tabla `alembic_version`.
+  - Alembic garantiza trazabilidad estricta de cada cambio sobre el catálogo relacional en el historial de Git, requerimiento obligatorio para auditorías de grado bancario (SOC 2, ISO 27001).
+
+---
+
+### 3.9. Trazabilidad Legal y Auditoría Regulatoria en Fondos Colaborativos (SARLAFT / DIAN)
+- **Decisión:** Todo movimiento financiero hacia o desde una Vaca es una transacción bancaria real inmutable con partida doble, independientemente de la política de visibilidad.
+- **Justificación:**
+  - En Vacas Anónimas (`ANONYMOUS`), la anonimización es **estrictamente una máscara en la capa de presentación (UI)** para eliminar la presión social entre pares.
+  - **A nivel contable y regulatorio (SARLAFT, Superfinanciera, DIAN), la transacción nunca es anónima**: la base de datos registra de manera obligatoria e inmutable el `user_id` del aportante, el número de cuenta origen, la cuenta bóveda receptora (`COW_VAULT`), el monto en centavos y la marca temporal certificada. La pista de auditoría forense es completa y verificable en cualquier instante.
+
+---
+
 ## 4. Matriz de Riesgos y Modos de Falla
 
 | Riesgo / Escenario de Falla | Qué puede salir mal | Cómo lo protege la Arquitectura | Evidencia Verificable |
@@ -187,3 +204,11 @@ Gracias a la arquitectura por capas y al modelo de partida doble, el sistema est
    - *Cómo se resuelve:* En `CowService.contribute`, se verifica si el usuario es nuevo y si `len(cow.members) >= cow.max_participants`.
 4. **Vencimiento y Reembolso Automático**:
    - *Cómo se resuelve:* Método en `CowService` que evalúa `cow.deadline < func.now()` y ejecuta `cancel_and_refund` de forma idempotente.
+
+---
+
+## 6. Documentación Detallada de la Fase 1: Servicios Transaccionales y Migraciones
+
+Para un análisis formal y matemático de la prevención de deadlocks por ordenamiento lexicográfico, la deduplicación con SHA-256 y la arquitectura contable de las cuentas bóveda, consultar el documento complementario:
+👉 **[Decisiones Técnicas, Integridad Financiera y Prevención de Deadlocks — Fase 1](FASE1_DECISIONES.md)**
+
