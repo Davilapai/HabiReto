@@ -3,46 +3,88 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HabiCapital P2P Transfer</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>HabiReto — Banca Digital y Fondos Colaborativos</title>
+  
+  <!-- Tipografía Editorial Inter (Swiss Typographic Style) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Sistema de Estilos Modern Digital Banking -->
+  <link rel="stylesheet" href="styles.css">
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen p-6">
-  <div class="max-w-4xl mx-auto space-y-6">
-    <header class="border-b border-slate-800 pb-4 flex justify-between items-center">
-      <h1 class="text-2xl font-bold tracking-tight">HabiCapital Transfer Core</h1>
-      <span class="text-xs bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-1 rounded">ACID Engine Ready</span>
-    </header>
+<body>
 
-    <!-- Grid: Crear Cuenta / Recargar / Transferir -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-        <h2 class="text-sm font-semibold mb-2">Crear Cuenta</h2>
-        <button id="btnCreateAccount" class="w-full bg-indigo-600 hover:bg-indigo-500 py-2 rounded text-sm font-medium transition">Nueva Cuenta</button>
+  <!-- Barra de Navegación Principal Superior -->
+  <header style="background:#FFFFFF;border-bottom:1px solid #E5EAF0;position:sticky;top:0;z-index:40;box-shadow:0 1px 2px rgba(16,24,40,0.03);">
+    <div style="max-width:1120px;margin:0 auto;padding:12px 24px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+      
+      <!-- Logo y Marca HabiReto -->
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div style="width:36px;height:36px;background:#173B63;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#FFFFFF;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+          </svg>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:18px;font-weight:700;color:#111827;letter-spacing:-0.5px;">HabiReto</span>
+            <span class="badge badge-success" style="font-size:11px;">Motor ACID Activo</span>
+          </div>
+          <span style="font-size:11px;color:#667085;letter-spacing:0.2px;">Transferencias P2P & Libro Mayor</span>
+        </div>
       </div>
 
-      <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-        <h2 class="text-sm font-semibold mb-2">Cargar Saldo (Simulado)</h2>
-        <input id="topupAccountId" placeholder="Account UUID" class="w-full mb-2 p-1.5 bg-slate-900 border border-slate-700 rounded text-xs" />
-        <input id="topupAmount" type="number" placeholder="Monto (COP)" class="w-full mb-2 p-1.5 bg-slate-900 border border-slate-700 rounded text-xs" />
-        <button id="btnTopup" class="w-full bg-slate-700 hover:bg-slate-600 py-1.5 rounded text-xs font-medium">Recargar</button>
-      </div>
+      <!-- Selector de Identidad de Demostración -->
+      <div id="identitySelectorRoot"></div>
 
-      <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-        <h2 class="text-sm font-semibold mb-2">Transferencia Inmediata</h2>
-        <input id="srcAccount" placeholder="Origen UUID" class="w-full mb-1.5 p-1.5 bg-slate-900 border border-slate-700 rounded text-xs" />
-        <input id="dstAccount" placeholder="Destino UUID" class="w-full mb-1.5 p-1.5 bg-slate-900 border border-slate-700 rounded text-xs" />
-        <input id="transferAmount" type="number" placeholder="Monto (COP)" class="w-full mb-1.5 p-1.5 bg-slate-900 border border-slate-700 rounded text-xs" />
-        <button id="btnTransfer" class="w-full bg-indigo-600 hover:bg-indigo-500 py-1.5 rounded text-xs font-medium">Transferir</button>
-      </div>
     </div>
+  </header>
 
-    <!-- Log de Transacciones y Estado -->
-    <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
-      <h2 class="text-sm font-semibold mb-2">Consola de Eventos Transaccionales</h2>
-      <pre id="logOutput" class="bg-slate-950 p-3 rounded text-xs text-emerald-400 font-mono h-48 overflow-y-auto border border-slate-800">Sistema listo. Esperando operaciones...</pre>
-    </div>
-  </div>
+  <!-- Contenedor Principal de la Aplicación -->
+  <main style="max-width:1120px;margin:0 auto;padding:32px 24px;display:flex;flex-direction:column;gap:24px;">
 
-  <script src="app.js"></script>
+    <!-- Selector de Pestañas Principales (Tabs) -->
+    <nav style="display:flex;border-bottom:1px solid #E5EAF0;gap:32px;" role="tablist" aria-label="Secciones de la banca digital">
+      <button type="button" id="tabDashboard" role="tab" aria-selected="true" style="background:none;border:none;border-bottom:2px solid #173B63;color:#173B63;font-size:15px;font-weight:600;padding:12px 4px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:color 150ms;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+        </svg>
+        Dashboard de Transferencias
+      </button>
+
+      <button type="button" id="tabCows" role="tab" aria-selected="false" style="background:none;border:none;border-bottom:2px solid transparent;color:#667085;font-size:15px;font-weight:500;padding:12px 4px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:color 150ms;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+        </svg>
+        Fondos Colaborativos ("Vacas")
+      </button>
+    </nav>
+
+    <!-- Sección 1: Dashboard de Cuentas y Transferencias P2P -->
+    <section id="dashboardSection" role="tabpanel" aria-labelledby="tabDashboard">
+      <div id="dashboardRoot"></div>
+    </section>
+
+    <!-- Sección 2: Módulo de Vacas y Fondos Colaborativos -->
+    <section id="cowsSection" role="tabpanel" aria-labelledby="tabCows" style="display:none;">
+      <div id="cowsRoot"></div>
+      <div id="privacyInspectorRoot"></div>
+    </section>
+
+  </main>
+
+  <!-- Pie de Página Institucional -->
+  <footer style="max-width:1120px;margin:40px auto 24px auto;padding:16px 24px;border-top:1px solid #E5EAF0;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#98A2B3;flex-wrap:wrap;gap:8px;">
+    <span>HabiReto Core v1.0 — Transacciones respaldadas por Libro Mayor de Partida Doble en PostgreSQL.</span>
+    <span>Privacidad Zero-Trust autorizada en frontera mediante X-User-Id.</span>
+  </footer>
+
+  <!-- Contenedor Global de Toasts -->
+  <div id="toast-container"></div>
+
+  <!-- Controlador Principal SPA -->
+  <script type="module" src="app.js"></script>
 </body>
 </html>
