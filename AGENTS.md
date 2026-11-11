@@ -3,6 +3,7 @@
 ## 1. Core principles
 
 - Understand the existing project before making changes.
+- Document
 - Prefer the smallest correct solution.
 - Follow Ponytail: minimize code, complexity, abstractions and dependencies.
 - Do not sacrifice correctness, security, validation or error handling for brevity.
@@ -158,3 +159,16 @@ Financial correctness is a non-negotiable system requirement. The system must ne
 - When an AI suggestion introduces subtle concurrency bugs or floating-point arithmetic, correct it explicitly.
 - Document key architectural decisions, trade-offs, and edge cases to ensure confident defense during the 60-minute live pair programming and interview session.
 - Keep the implementation clean and modular so that sudden live-coding requirement changes can be added without friction.
+
+## 13. Documentation
+
+- All code documentation, comments, docstrings and technical explanations inside source files MUST be written in Spanish.
+- Document code directly where it is implemented, not only in external documentation files.
+- Every public class, method, function and module MUST have documentation explaining its purpose, responsibilities, parameters, return values and relevant exceptions.
+- Document complex algorithms, business rules, non-obvious decisions, edge cases and implementation details with inline comments.
+- Explain WHY something is implemented in a particular way rather than simply repeating WHAT the code does.
+- Keep documentation synchronized with the implementation. Whenever code changes, update the affected documentation.
+- Use the documentation conventions and formats native to the language (Javadoc, JSDoc, Python docstrings, XML documentation, etc.).
+- Avoid redundant comments, obvious explanations and excessive documentation that adds noise.
+- Do not leave TODOs, FIXMEs or undocumented assumptions without a clear reason.
+- Preserve existing documentation unless it is incorrect or outdated.
