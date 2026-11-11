@@ -1,0 +1,10 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": [
+    "src",
+    "app",
+    "tests"
+  ],
+  "pythonVersion": "3.13"
+}
