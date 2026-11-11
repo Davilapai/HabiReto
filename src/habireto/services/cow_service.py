@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from habireto.core.exceptions import (
     AccountNotFoundError,
@@ -524,3 +525,50 @@ class CowService:
         await session.flush()
 
         return refund_txs
+
+    @staticmethod
+    async def get_cow_by_id(session: AsyncSession, cow_id: uuid.UUID) -> Cow | None:
+        """Obtiene una Vaca con carga ansiosa de sus miembros, usuarios y cuenta bóveda.
+
+        Utiliza selectinload para precargar las relaciones y evitar excepciones
+        MissingGreenlet al serializar los datos en entornos asíncronos.
+
+        Args:
+            session: Sesión asíncrona de base de datos activa.
+            cow_id: Identificador único de la Vaca.
+
+        Returns:
+            Cow | None: Entidad de la Vaca cargada o None si no existe.
+        """
+        stmt = (
+            select(Cow)
+            .where(Cow.id == cow_id)
+            .options(
+                selectinload(Cow.members).selectinload(CowMember.user),
+                selectinload(Cow.vault_account),
+            )
+        )
+        return (await session.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
+    async def list_cows(session: AsyncSession, status: str | None = None) -> list[Cow]:
+        """Recupera el listado de fondos colaborativos con carga ansiosa de relaciones.
+
+        Args:
+            session: Sesión asíncrona de base de datos activa.
+            status: Filtro opcional por estado operativo (ej. ACTIVE, COMPLETED).
+
+        Returns:
+            list[Cow]: Lista de Vacas ordenadas por fecha de creación descendente.
+        """
+        stmt = (
+            select(Cow)
+            .options(
+                selectinload(Cow.members).selectinload(CowMember.user),
+                selectinload(Cow.vault_account),
+            )
+            .order_by(Cow.created_at.desc())
+        )
+        if status is not None:
+            stmt = stmt.where(Cow.status == status)
+        return list((await session.execute(stmt)).scalars().all())
