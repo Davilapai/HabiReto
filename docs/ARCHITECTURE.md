@@ -202,3 +202,18 @@ Para un análisis formal y matemático de la prevención de deadlocks por ordena
 Para la demostración matemática de cero fugas de información (*Zero Mutual Information*), el ciclo de vida de transacciones limpias (`get_db_session`), la deduplicación criptográfica de idempotencia y el arnés de pruebas ASGI en memoria, consultar el documento complementario:
 👉 **[Decisiones Técnicas, Capa API y Serialización de Privacidad — Fase 2](FASE2_DECISIONES.md)**
 
+---
+
+## 7. Documentación Detallada de la Fase 3: Pruebas de Estrés y Consistencia Financiera
+
+Para las demostraciones matemáticas del teorema de conservación de masa monetaria, la erradicación determinista de interbloqueos bajo el teorema de aciclicidad de Coffman y los resultados experimentales de estrés concurrente, consultar el documento complementario:
+👉 **[Decisiones Técnicas, Pruebas de Estrés y Consistencia Financiera — Fase 3](FASE3_DECISIONES.md)**
+
+---
+
+## 8. Documentación Detallada de la Fase 4: Frontend Modern Digital Banking y Flujo de Demostración
+
+Para la arquitectura del frontend en Vanilla ES Modules servido por Nginx, el lenguaje visual Modern Digital Banking (Swiss Design), la corrección del proxy inverso, el sembrado determinista en lifespan y el guion técnico cronometrado de 5 minutos, consultar el documento complementario:
+👉 **[Decisiones Técnicas, Frontend Modern Digital Banking y Demostración — Fase 4](FASE4_DECISIONES.md)**
+
+
