@@ -28,15 +28,15 @@ export function initIdentitySelector(containerId) {
     container.innerHTML = `
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         
-        <!-- Botón para Gestionar Personas (Cambiar o Registrar) -->
+        <!-- Botón para Gestionar Personas (Registrar o Cambiar) -->
         <button type="button" id="btnManageUsers" class="bank-btn bank-btn-secondary" style="font-size:13px;padding:7px 14px;display:flex;align-items:center;gap:8px;border-radius:8px;font-weight:500;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
             <circle cx="9" cy="7" r="4"></circle>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            <line x1="19" y1="8" x2="19" y2="14"></line>
+            <line x1="22" y1="11" x2="16" y2="11"></line>
           </svg>
-          <span>Cambiar o Registrar Persona</span>
+          <span>Registrar Persona</span>
         </button>
 
         <!-- Tarjeta del Usuario Activo en Azul (Lado Derecho) -->
