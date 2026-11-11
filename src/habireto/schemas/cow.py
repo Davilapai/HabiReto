@@ -38,6 +38,10 @@ class CowCreateRequest(BaseModel):
         default=None,
         description="Fecha límite opcional para alcanzar el objetivo.",
     )
+    invited_user_ids: list[uuid.UUID] = Field(
+        default_factory=list,
+        description="Lista de identificadores de usuarios invitados formalmente a participar.",
+    )
 
 
 class CowContributeRequest(BaseModel):
