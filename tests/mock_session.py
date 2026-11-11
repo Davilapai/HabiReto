@@ -6,6 +6,7 @@ una base de datos relacional externa en tiempo de pruebas.
 """
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from habireto.models.account import Account
@@ -56,6 +57,14 @@ class InMemoryAsyncSession:
         self.lock_history: list[uuid.UUID] = []
 
     def add(self, obj: Any) -> None:
+        now = datetime.now(timezone.utc)
+        if hasattr(obj, "created_at") and getattr(obj, "created_at", None) is None:
+            obj.created_at = now
+        if hasattr(obj, "updated_at") and getattr(obj, "updated_at", None) is None:
+            obj.updated_at = now
+        if hasattr(obj, "joined_at") and getattr(obj, "joined_at", None) is None:
+            obj.joined_at = now
+
         if isinstance(obj, User):
             if getattr(obj, "id", None) is None:
                 obj.id = uuid.uuid4()
@@ -148,8 +157,24 @@ class InMemoryAsyncSession:
         if selected_name == "Cow" or "cows" in stmt_str:
             for val in params.values():
                 if isinstance(val, uuid.UUID) and val in self.cows:
-                    return MockResult(item=self.cows[val])
-            return MockResult(item=None)
+                    cow = self.cows[val]
+                    cow.members = [m for m in self.members.values() if m.cow_id == cow.id]
+                    for m in cow.members:
+                        if m.user_id in self.users:
+                            m.user = self.users[m.user_id]
+                    if cow.vault_account_id in self.accounts:
+                        cow.vault_account = self.accounts[cow.vault_account_id]
+                    return MockResult(item=cow, items=[cow])
+
+            all_cows = list(self.cows.values())
+            for cow in all_cows:
+                cow.members = [m for m in self.members.values() if m.cow_id == cow.id]
+                for m in cow.members:
+                    if m.user_id in self.users:
+                        m.user = self.users[m.user_id]
+                if cow.vault_account_id in self.accounts:
+                    cow.vault_account = self.accounts[cow.vault_account_id]
+            return MockResult(item=all_cows[0] if all_cows else None, items=all_cows)
 
         # 5. Consulta de CowMember
         if selected_name == "CowMember" or "cow_members" in stmt_str:

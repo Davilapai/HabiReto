@@ -321,6 +321,23 @@ class AccountService:
         return tx
 
     @staticmethod
+    async def get_account_by_id(
+        session: AsyncSession,
+        account_id: uuid.UUID,
+    ) -> Account | None:
+        """Obtiene la entidad de una cuenta bancaria por su identificador único.
+
+        Args:
+            session: Sesión asíncrona de base de datos activa.
+            account_id: Identificador de la cuenta a localizar.
+
+        Returns:
+            Account | None: Entidad de la cuenta encontrada o None si no existe.
+        """
+        stmt = select(Account).where(Account.id == account_id)
+        return (await session.execute(stmt)).scalar_one_or_none()
+
+    @staticmethod
     async def get_balance(
         session: AsyncSession,
         account_id: uuid.UUID,
