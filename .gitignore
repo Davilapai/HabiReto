@@ -31,3 +31,6 @@ wheels/
 # Antigravity: configuración MCP local
 /.agents/mcp_config.json
 /.agents/mcp_config.json.bak
+
+#Agents for impecable
+/.agent/skills/impeccable
