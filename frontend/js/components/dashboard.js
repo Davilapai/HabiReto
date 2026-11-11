@@ -9,6 +9,28 @@ import { api, formatCOP, formatDate } from "../api.js";
 import { DEMO_USERS, store } from "../state.js";
 import { showToast } from "./toast.js";
 
+export async function reloadDashboard() {
+  const active = store.getActiveUser();
+  if (!active || !active.accountId) return;
+
+  try {
+    const [balData, histData] = await Promise.all([
+      api.getBalance(active.accountId),
+      api.getHistory(active.accountId),
+    ]);
+
+    store.setState({
+      balance: balData.balance,
+      currency: balData.currency,
+      history: histData,
+      isLoading: false,
+    });
+  } catch (err) {
+    store.setState({ isLoading: false });
+    showToast(err.message, "error");
+  }
+}
+
 export function initDashboard(containerId) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -17,26 +39,7 @@ export function initDashboard(containerId) {
   let isSubmittingLoad = false;
 
   async function loadData() {
-    const active = store.getActiveUser();
-    if (!active) return;
-
-    try {
-      // Consulta en paralelo de saldo contable y extractos
-      const [balData, histData] = await Promise.all([
-        api.getBalance(active.accountId),
-        api.getHistory(active.accountId),
-      ]);
-
-      store.setState({
-        balance: balData.balance,
-        currency: balData.currency,
-        history: histData,
-        isLoading: false,
-      });
-    } catch (err) {
-      store.setState({ isLoading: false });
-      showToast(err.message, "error");
-    }
+    await reloadDashboard();
   }
 
   function render(state) {
@@ -45,8 +48,8 @@ export function initDashboard(containerId) {
     const history = state.history || [];
 
     // Filtra destinatarios para omitir al usuario activo
-    const availableRecipients = Object.values(DEMO_USERS).filter(
-      (u) => u.id !== active.id
+    const availableRecipients = store.getUsers().filter(
+      (u) => u.id !== active.id && u.accountId
     );
 
     container.innerHTML = `
@@ -103,7 +106,7 @@ export function initDashboard(containerId) {
 
               <div>
                 <label class="bank-label" for="transferAmount">Monto a transferir (COP):</label>
-                <input id="transferAmount" class="bank-input tabular-nums" type="number" min="1" step="1000" placeholder="Ej. 20000" required />
+                <input id="transferAmount" class="bank-input tabular-nums" type="number" min="1" step="any" placeholder="Ej. 20000" required />
               </div>
 
               <div>
@@ -199,17 +202,19 @@ export function initDashboard(containerId) {
     async function handleLoad(amount) {
       if (isSubmittingLoad) return;
       isSubmittingLoad = true;
-      render(store.getState());
 
       try {
-        await api.loadBalance(active.accountId, amount, `Recarga rápida +$${amount.toLocaleString()}`);
+        const res = await api.loadBalance(active.accountId, amount, `Recarga rápida +$${amount.toLocaleString()}`);
         showToast(`Recarga exitosa por ${formatCOP(amount)}`, "success");
-        await loadData();
+        // Actualización reactiva instantánea del saldo con la respuesta certificada por el backend
+        store.setState({ balance: res.balance });
+        // Recargar extractos en segundo plano sin bloquear el saldo visual
+        const history = await api.getHistory(active.accountId);
+        store.setState({ history });
       } catch (err) {
         showToast(err.message, "error");
       } finally {
         isSubmittingLoad = false;
-        render(store.getState());
       }
     }
 
@@ -245,17 +250,22 @@ export function initDashboard(containerId) {
         }
 
         isSubmittingTransfer = true;
-        render(store.getState());
 
         try {
           await api.transfer(active.accountId, destAccountId, amount, motive);
           showToast(`Transferencia exitosa de ${formatCOP(amount)} a ${recipientName}`, "success");
-          await loadData();
+          // Descontar inmediatamente para reactividad instantánea
+          store.setState({ balance: Math.max(0, balance - amount) });
+          // Sincronizar en segundo plano el saldo exacto y extracto contable
+          const [balData, histData] = await Promise.all([
+            api.getBalance(active.accountId),
+            api.getHistory(active.accountId),
+          ]);
+          store.setState({ balance: balData.balance, history: histData });
         } catch (err) {
           showToast(err.message, "error");
         } finally {
           isSubmittingTransfer = false;
-          render(store.getState());
         }
       });
     }
@@ -269,11 +279,17 @@ export function initDashboard(containerId) {
   }
 
   // Carga inicial de datos y suscripción a cambios de usuario activo
+  let currentUserId = store.getActiveUser()?.id;
   loadData();
   render(store.getState());
 
   store.subscribe((state) => {
-    // Si la identidad activa cambió, recargar datos del backend
+    const newUserId = state.activeUser?.id;
+    // Si la identidad activa cambió, sincronizar obligatoriamente con el backend
+    if (newUserId && newUserId !== currentUserId) {
+      currentUserId = newUserId;
+      loadData();
+    }
     render(state);
   });
 }

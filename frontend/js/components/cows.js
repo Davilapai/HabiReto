@@ -9,6 +9,15 @@ import { api, formatCOP, formatDate } from "../api.js";
 import { store } from "../state.js";
 import { showToast } from "./toast.js";
 
+export async function reloadCows() {
+  try {
+    const cows = await api.listCows();
+    store.setState({ cows, isLoading: false });
+  } catch (err) {
+    showToast(`Error al cargar vacas: ${err.message}`, "error");
+  }
+}
+
 export function initCows(containerId) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -18,12 +27,7 @@ export function initCows(containerId) {
   let isSubmitting = false;
 
   async function loadCows() {
-    try {
-      const cows = await api.listCows();
-      store.setState({ cows });
-    } catch (err) {
-      showToast(`Error al cargar vacas: ${err.message}`, "error");
-    }
+    await reloadCows();
   }
 
   function render(state) {
@@ -56,8 +60,8 @@ export function initCows(containerId) {
               <svg class="bank-empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <circle cx="12" cy="12" r="10"/><path d="M16 12l-4-4-4 4M12 16V9"/>
               </svg>
-              <div style="font-weight:500;margin-bottom:4px;">No hay fondos colaborativos activos</div>
-              <div style="font-size:13px;">Crea la primera vaca para comenzar una colecta grupal.</div>
+              <div style="font-weight:500;margin-bottom:4px;">No participas en ningún fondo colaborativo</div>
+              <div style="font-size:13px;">Crea una nueva vaca o solicita que te inviten formalmente para comenzar a aportar.</div>
             </div>
           `
             : `
@@ -239,6 +243,9 @@ export function initCows(containerId) {
   function openCreateModal() {
     activeModal = "create";
     const root = getModalRoot();
+    const active = store.getActiveUser();
+    const availableContacts = store.getUsers().filter((u) => u.id !== active.id);
+
     root.innerHTML = `
       <div class="bank-modal-overlay">
         <div class="bank-modal-content">
@@ -251,7 +258,7 @@ export function initCows(containerId) {
 
           <form id="createCowForm" style="display:flex;flex-direction:column;gap:14px;">
             <div>
-              <label class="bank-label" for="cowTitle">Nombre de la Vaca:</label>
+              <label class="bank-label" for="cowTitle">Nombre de la Vaca: *</label>
               <input id="cowTitle" class="bank-input" type="text" placeholder="Ej. Viaje a la Playa, Asado" required maxlength="120" />
             </div>
 
@@ -261,8 +268,8 @@ export function initCows(containerId) {
             </div>
 
             <div>
-              <label class="bank-label" for="cowTargetAmount">Meta de recaudación (COP):</label>
-              <input id="cowTargetAmount" class="bank-input tabular-nums" type="number" min="1" step="1000" placeholder="Ej. 100000" required />
+              <label class="bank-label" for="cowTargetAmount">Meta de recaudación (COP): *</label>
+              <input id="cowTargetAmount" class="bank-input tabular-nums" type="number" min="1" step="any" placeholder="Ej. 200000" required />
             </div>
 
             <div>
@@ -271,6 +278,28 @@ export function initCows(containerId) {
                 <option value="PUBLIC">Abierta (Pública) — Todos los aportes son visibles</option>
                 <option value="ANONYMOUS">Privada (Anónima) — Aportes individuales ocultos (Zero-Trust)</option>
               </select>
+            </div>
+
+            <!-- Selector de Participantes Invitados -->
+            <div>
+              <label class="bank-label">Invitar participantes:</label>
+              <div style="display:flex;flex-direction:column;gap:8px;max-height:140px;overflow-y:auto;padding:8px 12px;border:1px solid #E5EAF0;border-radius:8px;background:#F9FAFB;">
+                ${
+                  availableContacts.length === 0
+                    ? `<span style="font-size:12px;color:#667085;">No hay otros usuarios registrados para invitar.</span>`
+                    : availableContacts
+                        .map(
+                          (c) => `
+                          <label style="display:flex;align-items:center;gap:10px;font-size:13px;cursor:pointer;color:#111827;">
+                            <input type="checkbox" class="cowInviteCheckbox" value="${c.id}" checked style="width:16px;height:16px;cursor:pointer;" />
+                            <span><strong>${c.name}</strong> (${c.phone}) <span class="badge badge-navy" style="font-size:10px;padding:0 5px;">${c.role || "Usuario"}</span></span>
+                          </label>
+                        `
+                        )
+                        .join("")
+                }
+              </div>
+              <span style="font-size:11px;color:#667085;">Solo tú y las personas invitadas tendrán visibilidad de este fondo colaborativo.</span>
             </div>
 
             <div style="display:flex;gap:10px;margin-top:12px;justify-content:flex-end;">
@@ -294,6 +323,10 @@ export function initCows(containerId) {
       const target = Number(root.querySelector("#cowTargetAmount").value);
       const visibility = root.querySelector("#cowVisibility").value;
 
+      // Recolectar invitados seleccionados
+      const inviteCheckboxes = root.querySelectorAll(".cowInviteCheckbox:checked");
+      const invitedUserIds = Array.from(inviteCheckboxes).map((cb) => cb.value);
+
       if (!title) {
         showToast("El nombre de la vaca es obligatorio", "warning");
         return;
@@ -308,7 +341,7 @@ export function initCows(containerId) {
       if (submitBtn) submitBtn.disabled = true;
 
       try {
-        await api.createCow(title, desc, target, visibility);
+        await api.createCow(title, desc, target, visibility, null, invitedUserIds);
         showToast(`Vaca "${title}" creada exitosamente`, "success");
         closeModal();
         await loadCows();
@@ -353,8 +386,8 @@ export function initCows(containerId) {
 
           <form id="contributeForm" style="display:flex;flex-direction:column;gap:14px;">
             <div>
-              <label class="bank-label" for="contribAmount">Monto a aportar (COP):</label>
-              <input id="contribAmount" class="bank-input tabular-nums" type="number" min="1" step="1000" placeholder="Ej. 30000" required />
+              <label class="bank-label" for="contribAmount">Monto a aportar (COP): *</label>
+              <input id="contribAmount" class="bank-input tabular-nums" type="number" min="1" step="any" placeholder="Ej. 30000" required />
               
               <!-- Chips de montos sugeridos -->
               <div style="display:flex;gap:6px;margin-top:8px;">
@@ -407,7 +440,9 @@ export function initCows(containerId) {
         await api.contributeToCow(cow.id, amount);
         showToast(`Aporte de ${formatCOP(amount)} confirmado en "${cow.title}"`, "success");
         closeModal();
-        // Recargar saldo y vacas en paralelo
+        // Descontar inmediatamente para reactividad instantánea
+        store.setState({ balance: Math.max(0, balance - amount) });
+        // Recargar saldo exacto y vacas en paralelo
         await Promise.all([
           loadCows(),
           api.getBalance(store.getActiveUser().accountId).then((b) => store.setState({ balance: b.balance })),
@@ -568,11 +603,17 @@ export function initCows(containerId) {
   }
 
   // Carga inicial y reactividad
+  let currentUserId = store.getActiveUser()?.id;
   loadCows();
   render(store.getState());
 
   store.subscribe((state) => {
-    // Si la vaca o usuario cambió, re-renderizar
+    const newUserId = state.activeUser?.id;
+    // Si la identidad activa cambió, sincronizar obligatoriamente con el backend
+    if (newUserId && newUserId !== currentUserId) {
+      currentUserId = newUserId;
+      loadCows();
+    }
     render(state);
   });
 }

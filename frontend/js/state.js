@@ -5,6 +5,13 @@
  * utilicen coherentemente el encabezado X-User-Id correspondiente.
  */
 
+export function computeInitials(name) {
+  if (!name) return "US";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 export const DEMO_USERS = {
   alice: {
     key: "alice",
@@ -16,6 +23,7 @@ export const DEMO_USERS = {
     email: "alice@habireto.com",
     phone: "+573001111111",
     initials: "AT",
+    accountNumber: "ACC-ALICE1",
   },
   bob: {
     key: "bob",
@@ -27,6 +35,7 @@ export const DEMO_USERS = {
     email: "bob@habireto.com",
     phone: "+573002222222",
     initials: "BR",
+    accountNumber: "ACC-BOB2",
   },
   charlie: {
     key: "charlie",
@@ -38,6 +47,7 @@ export const DEMO_USERS = {
     email: "charlie@habireto.com",
     phone: "+573003333333",
     initials: "CA",
+    accountNumber: "ACC-CHARLIE3",
   },
 };
 
@@ -45,6 +55,7 @@ class StateStore {
   constructor() {
     this.state = {
       activeUser: DEMO_USERS.alice,
+      users: Object.values(DEMO_USERS),
       balance: 0,
       currency: "COP",
       history: [],
@@ -63,6 +74,73 @@ class StateStore {
     return this.state.activeUser;
   }
 
+  getUsers() {
+    return this.state.users && this.state.users.length > 0
+      ? this.state.users
+      : Object.values(DEMO_USERS);
+  }
+
+  setUsers(userList) {
+    if (!Array.isArray(userList)) return;
+    const formatted = userList.map((u) => {
+      const demo = Object.values(DEMO_USERS).find(
+        (d) => d.id === u.id || d.email === u.email
+      );
+      return {
+        key: demo ? demo.key : u.id,
+        id: u.id,
+        accountId: u.account_id || (demo ? demo.accountId : null),
+        name: u.full_name,
+        shortName: u.full_name ? u.full_name.split(" ")[0] : "Usuario",
+        role: demo ? demo.role : "Usuario",
+        email: u.email,
+        phone: u.phone_number,
+        initials: computeInitials(u.full_name),
+        accountNumber: u.account_number || (demo ? demo.accountNumber : "Cuenta"),
+        balance: u.balance !== undefined ? u.balance : null,
+      };
+    });
+
+    // Mantener la identidad activa sincronizada con los nuevos datos
+    const currentActiveId = this.state.activeUser.id;
+    const updatedActive = formatted.find((u) => u.id === currentActiveId);
+
+    this.setState({
+      users: formatted,
+      ...(updatedActive ? { activeUser: updatedActive } : {}),
+    });
+  }
+
+  addUser(newUser) {
+    const formatted = {
+      key: newUser.id,
+      id: newUser.id,
+      accountId: newUser.account_id,
+      name: newUser.full_name,
+      shortName: newUser.full_name.split(" ")[0],
+      role: "Usuario",
+      email: newUser.email,
+      phone: newUser.phone_number,
+      initials: computeInitials(newUser.full_name),
+      accountNumber: newUser.account_number || "Cuenta Corriente",
+      balance: newUser.balance !== undefined ? newUser.balance : 0,
+    };
+
+    const exists = this.state.users.some((u) => u.id === formatted.id);
+    const updatedUsers = exists
+      ? this.state.users.map((u) => (u.id === formatted.id ? formatted : u))
+      : [...this.state.users, formatted];
+
+    this.setState({
+      users: updatedUsers,
+      activeUser: formatted,
+      balance: formatted.balance || 0,
+      history: [],
+      cows: [],
+      isLoading: true,
+    });
+  }
+
   subscribe(listener) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -79,14 +157,18 @@ class StateStore {
     }
   }
 
-  setActiveUser(userKey) {
-    const user = DEMO_USERS[userKey];
+  setActiveUser(userKeyOrId) {
+    const users = this.getUsers();
+    const user =
+      users.find((u) => u.key === userKeyOrId || u.id === userKeyOrId) ||
+      DEMO_USERS[userKeyOrId];
+
     if (user && user.id !== this.state.activeUser.id) {
-      // Limpia datos específicos de la identidad previa para evitar parpadeos
       this.setState({
         activeUser: user,
-        balance: 0,
+        balance: user.balance !== null && user.balance !== undefined ? user.balance : 0,
         history: [],
+        cows: [],
         isLoading: true,
       });
     }

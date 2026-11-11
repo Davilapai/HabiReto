@@ -16,12 +16,15 @@ async function request(endpoint, options = {}) {
   const activeUser = store.getActiveUser();
   const headers = {
     "Content-Type": "application/json",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    Pragma: "no-cache",
     ...(activeUser ? { "X-User-Id": activeUser.id } : {}),
     ...(options.headers || {}),
   };
 
   const config = {
     ...options,
+    cache: "no-store",
     headers,
   };
 
@@ -54,6 +57,18 @@ async function request(endpoint, options = {}) {
 }
 
 export const api = {
+  // Usuarios e Identidades
+  async listUsers() {
+    return await request("/users", { method: "GET" });
+  },
+
+  async createUser(data) {
+    return await request("/users", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   // Consultas y operaciones de Cuentas
   async getBalance(accountId) {
     return await request(`/accounts/${accountId}/balance`, { method: "GET" });
@@ -100,7 +115,7 @@ export const api = {
     return await request(`/cows/${cowId}`, { method: "GET" });
   },
 
-  async createCow(title, description, targetAmount, visibilityType = "PUBLIC", deadline = null) {
+  async createCow(title, description, targetAmount, visibilityType = "PUBLIC", deadline = null, invitedUserIds = []) {
     return await request("/cows", {
       method: "POST",
       body: JSON.stringify({
@@ -109,6 +124,7 @@ export const api = {
         target_amount: Number(targetAmount),
         visibility_type: visibilityType,
         deadline: deadline || null,
+        invited_user_ids: invitedUserIds || [],
       }),
     });
   },
