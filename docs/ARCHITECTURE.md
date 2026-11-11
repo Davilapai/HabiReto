@@ -189,26 +189,16 @@ flowchart TD
 | **Falla a mitad de transferencia** | El proceso se cae o se pierde la conexión tras debitar la cuenta origen pero antes de acreditar la cuenta destino. | Transacción de base de datos ACID (`BEGIN ... COMMIT`). Si falla un paso, PostgreSQL ejecuta `ROLLBACK` total. | Test de inyección de error mid-transaction: saldo origen y destino permanecen intactos. |
 | **Fuga de datos en Vacas Anónimas** | Miembros o creador descubren cuánto aportó un participante ajeno. | Serialización Pydantic en el backend asigna `amount = None` a montos de terceros. | Test de API: aserción estricta de que el payload JSON carece de montos individuales ajenos. |
 
----
 
-## 5. Estrategia para la Entrevista en Vivo (Pair Programming de 60 min)
-
-El reto indica que en los primeros 60 minutos se solicitará implementar **un cambio no anticipado**.
-Gracias a la arquitectura por capas y al modelo de partida doble, el sistema está preparado para implementar rápidamente cualquiera de los cambios típicos en sistemas financieros:
-
-1. **Añadir Comisión por Transferencia (Fee del 1%)**:
-   - *Cómo se resuelve:* En `AccountService.transfer`, se calculan `monto_neto` y `comision`. Se debita el total al origen, se acredita el monto neto al destino y se genera un tercer `LedgerEntry` acreditando la comisión a la cuenta del sistema `SYSTEM_FEE_VAULT`.
-2. **Cuotas Fijas Obligatorias por Persona en una Vaca**:
-   - *Cómo se resuelve:* Se añade la columna opcional `fixed_quota` en la tabla `cows`. En `CowService.contribute`, se valida que `amount == cow.fixed_quota`.
-3. **Límite Máximo de Participantes**:
-   - *Cómo se resuelve:* En `CowService.contribute`, se verifica si el usuario es nuevo y si `len(cow.members) >= cow.max_participants`.
-4. **Vencimiento y Reembolso Automático**:
-   - *Cómo se resuelve:* Método en `CowService` que evalúa `cow.deadline < func.now()` y ejecuta `cancel_and_refund` de forma idempotente.
-
----
-
-## 6. Documentación Detallada de la Fase 1: Servicios Transaccionales y Migraciones
+## 5. Documentación Detallada de la Fase 1: Servicios Transaccionales y Migraciones
 
 Para un análisis formal y matemático de la prevención de deadlocks por ordenamiento lexicográfico, la deduplicación con SHA-256 y la arquitectura contable de las cuentas bóveda, consultar el documento complementario:
 👉 **[Decisiones Técnicas, Integridad Financiera y Prevención de Deadlocks — Fase 1](FASE1_DECISIONES.md)**
+
+---
+
+## 6. Documentación Detallada de la Fase 2: Capa API, Autenticación Mock y Serialización de Privacidad
+
+Para la demostración matemática de cero fugas de información (*Zero Mutual Information*), el ciclo de vida de transacciones limpias (`get_db_session`), la deduplicación criptográfica de idempotencia y el arnés de pruebas ASGI en memoria, consultar el documento complementario:
+👉 **[Decisiones Técnicas, Capa API y Serialización de Privacidad — Fase 2](FASE2_DECISIONES.md)**
 
