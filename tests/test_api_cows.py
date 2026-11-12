@@ -301,3 +301,63 @@ class TestApiCows(unittest.IsolatedAsyncioTestCase):
         data = res.json()
         member_ids = [m["user_id"] for m in data["members"]]
         self.assertIn(guest["user_id"], member_ids)
+
+    async def test_finish_cow_zero_balance_and_with_funds_history(self) -> None:
+        """Verifica que se pueda terminar una Vaquita incluso con $0 y que el historial conserve total_raised."""
+        creator = await self._create_user_and_account("Paula Creadora", "paula@cow.com", "+5730031", 100000)
+        guest = await self._create_user_and_account("Ramiro Invitado", "ramiro@cow.com", "+5730032", 500000)
+
+        # 1. Vaquita en $0 terminada inmediatamente
+        res_empty = await self.client.post(
+            "/api/v1/cows",
+            headers={"X-User-Id": creator["user_id"]},
+            json={
+                "title": "Vaquita Sin Fondos",
+                "target_amount": 200000,
+                "visibility_type": "PUBLIC",
+            },
+        )
+        empty_id = res_empty.json()["id"]
+
+        res_finish_empty = await self.client.post(
+            f"/api/v1/cows/{empty_id}/finish",
+            headers={"X-User-Id": creator["user_id"]},
+        )
+        self.assertEqual(res_finish_empty.status_code, 200)
+        self.assertEqual(res_finish_empty.json()["status"], "DISBURSED")
+        self.assertEqual(res_finish_empty.json()["total_raised"], 0)
+
+        # 2. Vaquita con aportes terminada conserva total_raised en el historial
+        res_funded = await self.client.post(
+            "/api/v1/cows",
+            headers={"X-User-Id": creator["user_id"]},
+            json={
+                "title": "Vaquita Con Aporte",
+                "target_amount": 400000,
+                "visibility_type": "ANONYMOUS",
+                "invited_user_ids": [guest["user_id"]],
+            },
+        )
+        funded_id = res_funded.json()["id"]
+
+        await self.client.post(
+            f"/api/v1/cows/{funded_id}/contributions",
+            headers={"X-User-Id": guest["user_id"]},
+            json={"amount": 250000},
+        )
+
+        res_finish_funded = await self.client.post(
+            f"/api/v1/cows/{funded_id}/finish",
+            headers={"X-User-Id": creator["user_id"]},
+        )
+        self.assertEqual(res_finish_funded.status_code, 200)
+        self.assertEqual(res_finish_funded.json()["status"], "DISBURSED")
+        self.assertEqual(res_finish_funded.json()["collected_amount"], 0)
+        self.assertEqual(res_finish_funded.json()["total_raised"], 250000)
+
+        # El creador recibió los 250,000 en su cuenta personal (100,000 + 250,000 = 350,000)
+        bal_creator = await self.client.get(
+            f"/api/v1/accounts/{creator['id']}/balance",
+            headers={"X-User-Id": creator["user_id"]},
+        )
+        self.assertEqual(bal_creator.json()["balance"], 350000)

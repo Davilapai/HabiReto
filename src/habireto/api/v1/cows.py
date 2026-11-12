@@ -222,6 +222,35 @@ async def disburse_cow(
 
 
 @router.post(
+    "/{cow_id}/finish",
+    response_model=CowDetailResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Terminar Vaquita (con o sin fondos)",
+    description="Termina la Vaquita transfiriendo los fondos al creador si hay saldo (> 0) o cerrándola directamente si está en $0, archivándola en el historial.",
+)
+async def finish_cow(
+    cow_id: uuid.UUID,
+    current_user_id: uuid.UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db_session),
+) -> CowDetailResponse:
+    """Termina la Vaquita activa o completada y devuelve su detalle actualizado para el historial."""
+    cow = await CowService.finish_cow(
+        session=session,
+        cow_id=cow_id,
+        requesting_user_id=current_user_id,
+    )
+    full_cow = await CowService.get_cow_by_id(session, cow.id)
+    if full_cow is None:
+        full_cow = cow
+    vault_balance = full_cow.vault_account.balance if full_cow.vault_account is not None else 0
+    return CowDetailResponse.from_cow(
+        cow=full_cow,
+        requesting_user_id=current_user_id,
+        collected_amount=vault_balance,
+    )
+
+
+@router.post(
     "/{cow_id}/cancel",
     response_model=list[TransferResponse],
     status_code=status.HTTP_200_OK,

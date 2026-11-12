@@ -117,6 +117,10 @@ class CowDetailResponse(BaseModel):
         ...,
         description="Monto total acumulado actualmente en la cuenta bóveda custodia.",
     )
+    total_raised: int = Field(
+        default=0,
+        description="Monto histórico total recaudado en la Vaquita (se conserva en el historial tras terminarla).",
+    )
     progress_percentage: float = Field(
         ...,
         description="Porcentaje de avance hacia la meta (0.0 a 100.0+).",
@@ -253,6 +257,10 @@ class CowDetailResponse(BaseModel):
                 )
             )
 
+        total_from_members = sum(m.total_contributed for m in cow.members)
+        total_from_txs = sum(tx.amount for tx in contrib_txs)
+        total_raised = max(collected_amount, total_from_members, total_from_txs)
+
         progress = (
             round((collected_amount / cow.target_amount) * 100, 2)
             if cow.target_amount > 0
@@ -278,6 +286,7 @@ class CowDetailResponse(BaseModel):
             description=cow.description,
             target_amount=cow.target_amount,
             collected_amount=collected_amount,
+            total_raised=total_raised,
             progress_percentage=progress,
             visibility_type=vis_enum,
             status=status_enum,
