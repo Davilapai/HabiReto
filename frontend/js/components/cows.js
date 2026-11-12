@@ -50,15 +50,21 @@ export function initCows(containerId) {
     const allCows = state.cows || [];
     const balance = state.balance || 0;
 
-    // Clasificación estricta: Mis Vacas (creadas por el usuario activo) vs Otras Vacas
+    // Clasificación: Vaquitas en curso (Mías vs Donde participo) y Vaquitas terminadas (Historial)
     const myCows = [];
     const otherCows = [];
+    const historyCows = [];
 
     allCows.forEach((cow) => {
+      const isFinished = cow.status === "DISBURSED" || cow.status === "CANCELLED";
       const myMembership = (cow.members || []).find((m) => m.user_id === active.id);
-      const isCreator = (myMembership && myMembership.role === "CREATOR") || (cow.creator_id && cow.creator_id === active.id);
+      const isCreator =
+        (myMembership && myMembership.role === "CREATOR") ||
+        (cow.creator_id && cow.creator_id === active.id);
 
-      if (isCreator) {
+      if (isFinished) {
+        historyCows.push({ cow, isCreator });
+      } else if (isCreator) {
         myCows.push(cow);
       } else {
         otherCows.push(cow);
@@ -78,29 +84,34 @@ export function initCows(containerId) {
 
     const filteredMyCows = filterBySearch(myCows);
     const filteredOtherCows = filterBySearch(otherCows);
+    const filteredHistoryCows = historyCows.filter(({ cow }) => filterBySearch([cow]).length > 0);
+    const activeCount = myCows.length + otherCows.length;
 
     const showMine = activeTabFilter === "all" || activeTabFilter === "mine";
     const showOthers = activeTabFilter === "all" || activeTabFilter === "others";
+    const showHistory = activeTabFilter === "all" || activeTabFilter === "history";
     const cardGrid = (list, isMine) =>
       `<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:16px;">
         ${list.map((cow) => renderCowCard(cow, active, isMine)).join("")}
       </div>`;
 
-    // Una sola barra de control (filtros + búsqueda + crear) y dos secciones.
-    // Se eliminan las tarjetas de métricas: los contadores ya están en las pestañas.
+    // Una sola barra de control (filtros + búsqueda + crear) y secciones de activas + historial.
     container.innerHTML = `
       <div class="page">
 
         <div class="toolbar">
           <div class="cows-filter-tabs" role="tablist">
             <button type="button" class="cows-filter-tab ${activeTabFilter === "all" ? "active" : ""}" data-tab="all">
-              Todas <span class="cows-tab-count">${allCows.length}</span>
+              Todas <span class="cows-tab-count">${activeCount}</span>
             </button>
             <button type="button" class="cows-filter-tab ${activeTabFilter === "mine" ? "active" : ""}" data-tab="mine">
               Mías <span class="cows-tab-count">${myCows.length}</span>
             </button>
             <button type="button" class="cows-filter-tab ${activeTabFilter === "others" ? "active" : ""}" data-tab="others">
               Invitado <span class="cows-tab-count">${otherCows.length}</span>
+            </button>
+            <button type="button" class="cows-filter-tab ${activeTabFilter === "history" ? "active" : ""}" data-tab="history">
+              Historial <span class="cows-tab-count">${historyCows.length}</span>
             </button>
           </div>
 
@@ -125,7 +136,7 @@ export function initCows(containerId) {
               ${
                 filteredMyCows.length === 0
                   ? `<div class="bank-empty-state">
-                      <div class="muted" style="margin-bottom:14px;">Aún no has creado ninguna vaquita.</div>
+                      <div class="muted" style="margin-bottom:14px;">Aún no tienes vaquitas activas creadas por ti.</div>
                       <button type="button" class="bank-btn bank-btn-secondary bank-btn-sm btnTriggerCreateCow">Crear vaquita</button>
                     </div>`
                   : cardGrid(filteredMyCows, true)
@@ -146,6 +157,25 @@ export function initCows(containerId) {
                 filteredOtherCows.length === 0
                   ? `<div class="bank-empty-state"><div class="muted">Cuando alguien te invite con tu llave, su vaquita aparecerá aquí.</div></div>`
                   : cardGrid(filteredOtherCows, false)
+              }
+            </section>
+          `
+            : ""
+        }
+
+        ${
+          showHistory
+            ? `
+            <section>
+              <div class="cows-section-header">
+                <h2 class="cows-section-title">Historial de vaquitas</h2>
+              </div>
+              ${
+                filteredHistoryCows.length === 0
+                  ? `<div class="bank-empty-state"><div class="muted">Las vaquitas que termines se guardarán aquí.</div></div>`
+                  : `<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:16px;">
+                      ${filteredHistoryCows.map(({ cow, isCreator }) => renderCowCard(cow, active, isCreator)).join("")}
+                    </div>`
               }
             </section>
           `
@@ -234,10 +264,17 @@ export function initCows(containerId) {
     const isCancelled = cow.status === "CANCELLED";
     const isActive = cow.status === "ACTIVE";
 
-    const progress = Math.min(100, Math.round((cow.collected_amount / cow.target_amount) * 100));
-    const remaining = Math.max(0, cow.target_amount - cow.collected_amount);
+    const displayCollected =
+      isDisbursed || isCancelled
+        ? cow.total_raised !== undefined && cow.total_raised !== null
+          ? cow.total_raised
+          : cow.collected_amount
+        : cow.collected_amount;
 
-    const canDisburse = isMine && (isActive || isCompleted) && cow.collected_amount > 0;
+    const progress = Math.min(100, Math.round((displayCollected / cow.target_amount) * 100));
+    const remaining = Math.max(0, cow.target_amount - displayCollected);
+
+    const canDisburse = isMine && (isActive || isCompleted);
     const canContribute = (isActive || isCompleted) && !isDisbursed && !isCancelled;
 
     // Resolver nombre del creador si no es propia
@@ -284,14 +321,20 @@ export function initCows(containerId) {
           </div>
 
           <div class="kv" style="margin-bottom:8px;">
-            <span class="tabular-nums" style="font-size:20px;font-weight:700;color:#0F172A;">${formatCOP(cow.collected_amount)}</span>
+            <span class="tabular-nums" style="font-size:20px;font-weight:700;color:#0F172A;">${formatCOP(displayCollected)}</span>
             <span class="muted tabular-nums">de ${formatCOP(cow.target_amount)}</span>
           </div>
           <div class="bank-progress-track" role="progressbar" aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">
             <div class="bank-progress-bar ${progress >= 100 ? "completed" : ""}" style="width:${progress}%;"></div>
           </div>
           <div class="muted tabular-nums" style="margin-top:8px;">
-            ${remaining > 0 ? `Faltan ${formatCOP(remaining)}` : "Meta lograda"}
+            ${
+              isDisbursed || isCancelled
+                ? `Cerrada en historial · Recaudado ${formatCOP(displayCollected)}`
+                : remaining > 0
+                ? `Faltan ${formatCOP(remaining)}`
+                : "Meta lograda"
+            }
             ${cow.my_contribution > 0 ? ` · Tu aporte ${formatCOP(cow.my_contribution)}` : ""}
           </div>
           ${
@@ -636,10 +679,11 @@ export function initCows(containerId) {
   }
 
   /**
-   * Modal 3: Liquidación ("Terminar Vaquita") hacia la cuenta personal del Creador.
+   * Modal 3: Liquidación ("Terminar Vaquita") hacia la cuenta personal del Creador o cierre en $0.
    */
   function openDisburseModal(cow) {
     const root = getModalRoot();
+    const hasFunds = cow.collected_amount > 0;
 
     root.innerHTML = `
       <div class="bank-modal-overlay">
@@ -651,7 +695,13 @@ export function initCows(containerId) {
             </button>
           </div>
 
-          <p class="muted" style="margin:0 0 4px;">Se transferirá a tu cuenta</p>
+          <p class="muted" style="margin:0 0 4px;">
+            ${
+              hasFunds
+                ? "Se transferirá a tu cuenta y se guardará en el historial de vaquitas"
+                : "No hay dinero recaudado ($0). Se cerrará y se guardará en el historial de vaquitas"
+            }
+          </p>
           <div class="tabular-nums" style="font-size:32px;font-weight:700;color:#0F172A;">${formatCOP(cow.collected_amount)}</div>
 
           <div class="modal-actions">
@@ -673,7 +723,12 @@ export function initCows(containerId) {
 
       try {
         await api.disburseCow(cow.id);
-        showToast(`Vaquita terminada: ${formatCOP(cow.collected_amount)} transferidos a tu cuenta`, "success");
+        showToast(
+          hasFunds
+            ? `Vaquita terminada: ${formatCOP(cow.collected_amount)} transferidos a tu cuenta`
+            : `Vaquita "${cow.title}" terminada y guardada en el historial`,
+          "success"
+        );
         closeModal();
         await Promise.all([
           loadCows(),
@@ -835,7 +890,11 @@ export function initCows(containerId) {
 
           <div class="kv" style="margin-top:16px;padding:0 4px;">
             <span class="muted">Total recaudado</span>
-            <strong class="tabular-nums" style="font-size:16px;">${formatCOP(cow.collected_amount)}</strong>
+            <strong class="tabular-nums" style="font-size:16px;">${formatCOP(
+              cow.status === "DISBURSED" || cow.status === "CANCELLED"
+                ? cow.total_raised ?? cow.collected_amount
+                : cow.collected_amount
+            )}</strong>
           </div>
         </div>
       </div>

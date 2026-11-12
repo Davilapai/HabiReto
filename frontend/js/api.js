@@ -146,7 +146,7 @@ export const api = {
   },
 
   async disburseCow(cowId) {
-    return await request(`/cows/${cowId}/disburse`, {
+    return await request(`/cows/${cowId}/finish`, {
       method: "POST",
     });
   },
