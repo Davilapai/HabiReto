@@ -1,15 +1,20 @@
 """Esquemas Pydantic v2 para la gestión y privacidad de Vacas (Fondos Colaborativos).
 
-Implementa los contratos de entrada y salida con aplicación estricta de la regla
-de privacidad en servidor: en fondos anónimos, los aportes individuales de terceros
-son completamente omitidos (None) del payload para prevenir fugas de información.
+Implementa los contratos de entrada y salida con aplicación estricta de las dos políticas
+de visibilidad en servidor (Zero-Trust Data Leaks):
+- Vaca Pública (PUBLIC): El creador ve a todos los invitados (incluso con $0); los invitados
+  solo ven a los participantes que ya han realizado aportes (> $0) con nombre y monto.
+- Vaca Privada (ANONYMOUS): Solo el creador conoce la lista de personas invitadas (con montos
+  de terceros ocultos en None); el resto de participantes no ve la lista de invitados y todos
+  observan cómo se llena la vaca mediante aportes individuales anónimos.
 """
 
 import uuid
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
-from habireto.models.cow import Cow, CowMember, CowStatus, CowVisibilityType
+from habireto.models.cow import Cow, CowMemberRole, CowStatus, CowVisibilityType
+from habireto.models.ledger import TransactionStatus, TransactionType
 
 
 class CowCreateRequest(BaseModel):
@@ -57,8 +62,8 @@ class CowContributeRequest(BaseModel):
 class CowMemberView(BaseModel):
     """Vista de un participante dentro del detalle de una Vaca.
 
-    En modo anónimo, amount_contributed es estrictamente None para todos los usuarios
-    distintos al propio participante que consulta la información.
+    En modo anónimo, solo se expone la lista de invitados al creador y con
+    amount_contributed en None para terceros.
     """
 
     user_id: uuid.UUID = Field(..., description="Identificador único del participante.")
@@ -73,10 +78,34 @@ class CowMemberView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CowContributionView(BaseModel):
+    """Vista de un evento individual de aporte realizado a la bóveda de una Vaca.
+
+    En vacas privadas (ANONYMOUS), contributor_name es estrictamente None para que la
+    interfaz muestre mensajes anónimos del tipo 'Alguien ha aportado $60.000' sin revelar
+    la identidad del aportante.
+    """
+
+    id: uuid.UUID = Field(..., description="Identificador único de la transacción de aporte.")
+    amount: int = Field(..., description="Monto del aporte individual en centavos COP.")
+    contributor_name: str | None = Field(
+        default=None,
+        description="Nombre del aportante en vacas públicas; None en vacas privadas.",
+    )
+    created_at: datetime = Field(..., description="Fecha y hora en que se efectuó el aporte.")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class CowDetailResponse(BaseModel):
     """Detalle consolidado de un fondo colaborativo con serialización de privacidad resuelta."""
 
     id: uuid.UUID = Field(..., description="Identificador único del fondo colaborativo.")
+    creator_id: uuid.UUID = Field(..., description="Identificador del usuario creador de la vaca.")
+    creator_name: str = Field(
+        default="Organizador",
+        description="Nombre del usuario creador de la vaca.",
+    )
     title: str = Field(..., description="Título de la iniciativa.")
     description: str | None = Field(None, description="Descripción o motivo del recaudo.")
     target_amount: int = Field(..., description="Meta monetaria en centavos COP.")
@@ -100,7 +129,11 @@ class CowDetailResponse(BaseModel):
     )
     members: list[CowMemberView] = Field(
         default_factory=list,
-        description="Listado de miembros con visibilidad de aportes resuelta en servidor.",
+        description="Listado de miembros filtrado según el rol del solicitante y la privacidad.",
+    )
+    contributions: list[CowContributionView] = Field(
+        default_factory=list,
+        description="Historial de aportes individuales realizados a la vaca.",
     )
     created_at: datetime = Field(..., description="Fecha de creación de la vaca.")
 
@@ -115,11 +148,15 @@ class CowDetailResponse(BaseModel):
     ) -> "CowDetailResponse":
         """Construye la respuesta aplicando serialización de privacidad estricta en servidor.
 
-        Regla de Serialización de Privacidad:
-        - Si la Vaca es PUBLIC: Todos los observadores ven los montos exactos de todos los miembros.
-        - Si la Vaca es ANONYMOUS: Los montos individuales quedan ESTRICTAMENTE OCULTOS para todos
-          (incluyendo de forma innegociable al creador de la vaca). Únicamente cada usuario
-          puede ver cuánto puso él mismo a través de amount_contributed y my_contribution.
+        Reglas de Serialización por Caso:
+        1. Vaca Pública (PUBLIC):
+           - Si consulta el Creador: recibe todos los miembros invitados (incluso con $0) y sus montos.
+           - Si consulta un Invitado: recibe únicamente los miembros que ya han aportado (> $0) con nombre y monto.
+        2. Vaca Privada (ANONYMOUS):
+           - Si consulta el Creador: recibe la lista de personas invitadas, pero con amount_contributed = None
+             para terceros (sabe a quién invitó, pero no cuánto puso cada quien).
+           - Si consulta un Invitado: members se devuelve vacío ([]) para no revelar quiénes más fueron invitados.
+           - Para todos: contributions expone cada aporte individual con contributor_name = None.
 
         Args:
             cow: Entidad ORM de la Vaca con sus miembros y relaciones cargadas.
@@ -130,19 +167,29 @@ class CowDetailResponse(BaseModel):
             CowDetailResponse: Objeto serializado sanitizado sin fuga de datos privados.
         """
         my_contribution = 0
+        creator_name = "Organizador"
+        member_names_by_user_id: dict[str, str] = {}
+
         for member in cow.members:
+            full_name = (
+                member.user.full_name
+                if member.user is not None
+                else "Participante"
+            )
+            member_names_by_user_id[str(member.user_id)] = full_name
+            if member.role == CowMemberRole.CREATOR.value or member.user_id == cow.creator_id:
+                creator_name = full_name
             if member.user_id == requesting_user_id:
                 my_contribution = member.total_contributed
-                break
 
         is_public = (
             cow.visibility_type == CowVisibilityType.PUBLIC.value
             or cow.visibility_type == CowVisibilityType.PUBLIC
         )
+        is_creator = requesting_user_id == cow.creator_id
 
         members_view: list[CowMemberView] = []
         for member in cow.members:
-            # Obtiene el nombre completo del usuario asociado a la membresía
             full_name = (
                 member.user.full_name
                 if member.user is not None
@@ -150,11 +197,15 @@ class CowDetailResponse(BaseModel):
             )
 
             if is_public:
-                # Modo Público: Todos ven los montos exactos
+                # En vacas públicas, el creador ve a todos los invitados;
+                # los invitados solo ven a quienes ya han aportado (> 0).
+                if not is_creator and member.total_contributed <= 0:
+                    continue
                 monto: int | None = member.total_contributed
             else:
-                # Modo Anónimo: ESTRICTAMENTE OCULTO PARA TODOS (incluyendo al creador)
-                # Solo el propio usuario puede ver cuánto puso él mismo
+                # En vacas privadas, solo el creador conoce la lista de personas invitadas.
+                if not is_creator:
+                    continue
                 monto = (
                     member.total_contributed
                     if member.user_id == requesting_user_id
@@ -168,6 +219,33 @@ class CowDetailResponse(BaseModel):
                     role=member.role,
                     joined_at=member.joined_at,
                     amount_contributed=monto,
+                )
+            )
+
+        # Construcción del listado cronológico de aportes individuales (COW_CONTRIBUTION)
+        raw_txs = getattr(cow, "transactions", None) or []
+        contrib_txs = [
+            tx
+            for tx in raw_txs
+            if tx.transaction_type == TransactionType.COW_CONTRIBUTION.value
+            and tx.status == TransactionStatus.SUCCESS.value
+        ]
+        contrib_txs.sort(key=lambda t: t.created_at, reverse=True)
+
+        contributions_view: list[CowContributionView] = []
+        for tx in contrib_txs:
+            contributor_name: str | None = None
+            if is_public:
+                meta = tx.metadata_json or {}
+                uid = str(meta.get("contributor_user_id", ""))
+                contributor_name = member_names_by_user_id.get(uid, "Participante")
+
+            contributions_view.append(
+                CowContributionView(
+                    id=tx.id,
+                    amount=tx.amount,
+                    contributor_name=contributor_name,
+                    created_at=tx.created_at,
                 )
             )
 
@@ -190,6 +268,8 @@ class CowDetailResponse(BaseModel):
 
         return cls(
             id=cow.id,
+            creator_id=cow.creator_id,
+            creator_name=creator_name,
             title=cow.title,
             description=cow.description,
             target_amount=cow.target_amount,
@@ -200,5 +280,6 @@ class CowDetailResponse(BaseModel):
             deadline=cow.deadline,
             my_contribution=my_contribution,
             members=members_view,
+            contributions=contributions_view,
             created_at=cow.created_at,
         )

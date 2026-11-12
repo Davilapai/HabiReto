@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pydantic import ValidationError
 
 from habireto.models.cow import Cow, CowMember, CowMemberRole, CowStatus, CowVisibilityType
+from habireto.models.ledger import Transaction, TransactionStatus, TransactionType
 from habireto.models.user import User
 from habireto.schemas.account import (
     AccountCreateRequest,
@@ -115,16 +116,19 @@ class TestPrivacySerialization(unittest.TestCase):
         self.creator_id = uuid.uuid4()
         self.user_a_id = uuid.uuid4()
         self.user_b_id = uuid.uuid4()
+        self.user_zero_id = uuid.uuid4()
         self.stranger_id = uuid.uuid4()
 
         self.user_creator = User(id=self.creator_id, full_name="Carlos Creador", email="c@test.com", phone_number="+571")
         self.user_a = User(id=self.user_a_id, full_name="Ana Aportante", email="a@test.com", phone_number="+572")
         self.user_b = User(id=self.user_b_id, full_name="Bernardo Aportante", email="b@test.com", phone_number="+573")
+        self.user_zero = User(id=self.user_zero_id, full_name="Diana Invitada", email="d@test.com", phone_number="+574")
 
         self.cow_id = uuid.uuid4()
         self.vault_id = uuid.uuid4()
 
     def _create_mock_cow(self, visibility: CowVisibilityType) -> Cow:
+        now = datetime.now(timezone.utc)
         cow = Cow(
             id=self.cow_id,
             creator_id=self.creator_id,
@@ -134,7 +138,7 @@ class TestPrivacySerialization(unittest.TestCase):
             target_amount=1000000,
             visibility_type=visibility.value,
             status=CowStatus.ACTIVE.value,
-            created_at=datetime.now(timezone.utc),
+            created_at=now,
         )
 
         member_creator = CowMember(
@@ -143,7 +147,7 @@ class TestPrivacySerialization(unittest.TestCase):
             user_id=self.creator_id,
             total_contributed=100000,
             role=CowMemberRole.CREATOR.value,
-            joined_at=datetime.now(timezone.utc),
+            joined_at=now,
         )
         member_creator.user = self.user_creator
 
@@ -153,7 +157,7 @@ class TestPrivacySerialization(unittest.TestCase):
             user_id=self.user_a_id,
             total_contributed=300000,
             role=CowMemberRole.CONTRIBUTOR.value,
-            joined_at=datetime.now(timezone.utc),
+            joined_at=now,
         )
         member_a.user = self.user_a
 
@@ -163,34 +167,81 @@ class TestPrivacySerialization(unittest.TestCase):
             user_id=self.user_b_id,
             total_contributed=400000,
             role=CowMemberRole.CONTRIBUTOR.value,
-            joined_at=datetime.now(timezone.utc),
+            joined_at=now,
         )
         member_b.user = self.user_b
 
-        cow.members = [member_creator, member_a, member_b]
+        member_zero = CowMember(
+            id=uuid.uuid4(),
+            cow_id=self.cow_id,
+            user_id=self.user_zero_id,
+            total_contributed=0,
+            role=CowMemberRole.CONTRIBUTOR.value,
+            joined_at=now,
+        )
+        member_zero.user = self.user_zero
+
+        cow.members = [member_creator, member_a, member_b, member_zero]
+        cow.transactions = [
+            Transaction(
+                id=uuid.uuid4(),
+                transaction_type=TransactionType.COW_CONTRIBUTION.value,
+                source_account_id=uuid.uuid4(),
+                destination_account_id=self.vault_id,
+                amount=300000,
+                currency="COP",
+                cow_id=self.cow_id,
+                metadata_json={"contributor_user_id": str(self.user_a_id)},
+                status=TransactionStatus.SUCCESS.value,
+                created_at=now,
+            ),
+            Transaction(
+                id=uuid.uuid4(),
+                transaction_type=TransactionType.COW_CONTRIBUTION.value,
+                source_account_id=uuid.uuid4(),
+                destination_account_id=self.vault_id,
+                amount=400000,
+                currency="COP",
+                cow_id=self.cow_id,
+                metadata_json={"contributor_user_id": str(self.user_b_id)},
+                status=TransactionStatus.SUCCESS.value,
+                created_at=now,
+            ),
+        ]
         return cow
 
-    def test_public_cow_exposes_all_amounts(self) -> None:
-        """En modo PUBLIC, todos los miembros ven los aportes exactos de todos."""
+    def test_public_cow_creator_sees_all_invitees_and_invitee_sees_only_contributors(self) -> None:
+        """En modo PUBLIC, el creador ve todos los invitados (incluso $0) y el invitado solo ve quienes ya aportaron."""
         cow = self._create_mock_cow(CowVisibilityType.PUBLIC)
-        res = CowDetailResponse.from_cow(
+
+        # 1. Creador ve a todos (incluyendo a Diana con $0)
+        res_creator = CowDetailResponse.from_cow(
+            cow=cow,
+            requesting_user_id=self.creator_id,
+            collected_amount=800000,
+        )
+        creator_amounts = {m.user_id: m.amount_contributed for m in res_creator.members}
+        self.assertEqual(len(res_creator.members), 4)
+        self.assertEqual(creator_amounts[self.user_zero_id], 0)
+
+        # 2. Invitada Ana solo ve a quienes ya aportaron (> 0)
+        res_invitee = CowDetailResponse.from_cow(
             cow=cow,
             requesting_user_id=self.user_a_id,
             collected_amount=800000,
         )
+        self.assertEqual(res_invitee.collected_amount, 800000)
+        self.assertEqual(res_invitee.progress_percentage, 80.0)
+        self.assertEqual(res_invitee.my_contribution, 300000)
 
-        self.assertEqual(res.collected_amount, 800000)
-        self.assertEqual(res.progress_percentage, 80.0)
-        self.assertEqual(res.my_contribution, 300000)
-
-        # En modo público, todos los montos deben ser visibles
-        amounts_by_user = {m.user_id: m.amount_contributed for m in res.members}
+        amounts_by_user = {m.user_id: m.amount_contributed for m in res_invitee.members}
+        self.assertNotIn(self.user_zero_id, amounts_by_user)
         self.assertEqual(amounts_by_user[self.creator_id], 100000)
         self.assertEqual(amounts_by_user[self.user_a_id], 300000)
         self.assertEqual(amounts_by_user[self.user_b_id], 400000)
 
-    def test_anonymous_cow_masks_others_for_member_a(self) -> None:
-        """En modo ANONYMOUS, el Miembro A solo ve su propio aporte; otros son None."""
+    def test_anonymous_cow_hides_member_list_for_invitee_and_exposes_anonymous_contributions(self) -> None:
+        """En modo ANONYMOUS, un invitado NO ve la lista de invitados; solo ve los aportes anónimos."""
         cow = self._create_mock_cow(CowVisibilityType.ANONYMOUS)
         res = CowDetailResponse.from_cow(
             cow=cow,
@@ -199,16 +250,13 @@ class TestPrivacySerialization(unittest.TestCase):
         )
 
         self.assertEqual(res.my_contribution, 300000)
-        amounts_by_user = {m.user_id: m.amount_contributed for m in res.members}
+        self.assertEqual(res.members, [])
+        self.assertEqual(len(res.contributions), 2)
+        for contrib in res.contributions:
+            self.assertIsNone(contrib.contributor_name)
 
-        # Ana ve su aporte exacto
-        self.assertEqual(amounts_by_user[self.user_a_id], 300000)
-        # Los aportes del Creador y de Bernardo son ESTRICTAMENTE None
-        self.assertIsNone(amounts_by_user[self.creator_id])
-        self.assertIsNone(amounts_by_user[self.user_b_id])
-
-    def test_anonymous_cow_masks_members_even_for_creator(self) -> None:
-        """En modo ANONYMOUS, el Creador NO puede ver los aportes de los demás miembros."""
+    def test_anonymous_cow_shows_invitees_only_to_creator_with_masked_amounts(self) -> None:
+        """En modo ANONYMOUS, solo el Creador ve la lista de invitados pero con montos de terceros en None."""
         cow = self._create_mock_cow(CowVisibilityType.ANONYMOUS)
         res = CowDetailResponse.from_cow(
             cow=cow,
@@ -217,16 +265,17 @@ class TestPrivacySerialization(unittest.TestCase):
         )
 
         self.assertEqual(res.my_contribution, 100000)
+        self.assertEqual(len(res.members), 4)
         amounts_by_user = {m.user_id: m.amount_contributed for m in res.members}
 
-        # El creador solo ve su propio aporte
+        # El creador solo ve su propio aporte; terceros son None
         self.assertEqual(amounts_by_user[self.creator_id], 100000)
-        # Los aportes individuales de Ana y Bernardo están OCULTOS para el creador
         self.assertIsNone(amounts_by_user[self.user_a_id])
         self.assertIsNone(amounts_by_user[self.user_b_id])
+        self.assertIsNone(amounts_by_user[self.user_zero_id])
 
-    def test_anonymous_cow_masks_all_amounts_for_outsider(self) -> None:
-        """En modo ANONYMOUS, un usuario ajeno ve la lista de nombres pero CERO montos."""
+    def test_anonymous_cow_hides_members_for_outsider(self) -> None:
+        """En modo ANONYMOUS, un tercero no creador recibe lista de miembros vacía."""
         cow = self._create_mock_cow(CowVisibilityType.ANONYMOUS)
         res = CowDetailResponse.from_cow(
             cow=cow,
@@ -235,5 +284,4 @@ class TestPrivacySerialization(unittest.TestCase):
         )
 
         self.assertEqual(res.my_contribution, 0)
-        for member_view in res.members:
-            self.assertIsNone(member_view.amount_contributed)
+        self.assertEqual(res.members, [])

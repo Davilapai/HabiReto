@@ -428,6 +428,11 @@ class InMemoryAsyncSession:
                         m.user = self.users[m.user_id]
                 if cow.vault_account_id in self.accounts:
                     cow.vault_account = self.accounts[cow.vault_account_id]
+                cow.transactions = [
+                    tx
+                    for tx in self.transactions_by_id.values()
+                    if tx.cow_id == cow.id
+                ]
 
             # Si se consulta por cow.id explícito:
             for val in params.values():
