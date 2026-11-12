@@ -66,7 +66,7 @@ export function initPrivacyInspector(containerId) {
     const hasAnon = (store.getState().cows || []).some((c) => c.visibility_type === "ANONYMOUS");
 
     const body = !hasAnon
-      ? `<p class="muted" style="margin:0;">Crea una vaca anónima para ver cómo el servidor oculta los aportes de otros.</p>`
+      ? `<p class="muted" style="margin:0;">Crea una vaquita privada para ver cómo el servidor oculta los aportes de otros.</p>`
       : !currentCow
       ? `<p class="muted" style="margin:0;">Cargando…</p>`
       : `

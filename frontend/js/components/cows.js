@@ -1,9 +1,9 @@
 /**
- * Módulo de Fondos Colaborativos ("Vacas") para HabiReto.
+ * Módulo de Fondos Colaborativos ("Vaquitas") para HabiReto.
  * 
- * Gestiona la visualización de iniciativas ("Mis vacas" vs "Donde participo"),
- * creación con privacidad e invitados, aportes atómicos con validación de saldo,
- * liquidación por desembolso a la cuenta del creador y consulta de miembros con reglas Zero-Trust.
+ * Gestiona la visualización de iniciativas ("Mis vaquitas" vs "Donde participo"),
+ * creación con privacidad e invitación por llave única (@ABC123), aportes atómicos con
+ * validación de saldo, liquidación ("Terminar Vaquita") y consulta con reglas Zero-Trust.
  */
 
 import { api, formatCOP, formatDate } from "../api.js";
@@ -11,14 +11,14 @@ import { store } from "../state.js";
 import { showToast } from "./toast.js";
 
 /**
- * Recarga la lista de vacas desde el backend y actualiza el estado global.
+ * Recarga la lista de vaquitas desde el backend y actualiza el estado global.
  */
 export async function reloadCows() {
   try {
     const cows = await api.listCows();
     store.setState({ cows, isLoading: false });
   } catch (err) {
-    showToast(`Error al sincronizar vacas: ${err.message}`, "error");
+    showToast(`Error al sincronizar vaquitas: ${err.message}`, "error");
   }
 }
 
@@ -105,12 +105,12 @@ export function initCows(containerId) {
           </div>
 
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-            <input type="search" id="cowSearchInput" class="bank-input search-input" placeholder="Buscar" aria-label="Buscar vacas por nombre" value="${searchQuery}" />
+            <input type="search" id="cowSearchInput" class="bank-input search-input" placeholder="Buscar" aria-label="Buscar vaquitas por nombre" value="${searchQuery}" />
             <button type="button" id="btnOpenCreateCow" class="bank-btn bank-btn-primary">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
-              Nueva vaca
+              Nueva vaquita
             </button>
           </div>
         </div>
@@ -120,13 +120,13 @@ export function initCows(containerId) {
             ? `
             <section>
               <div class="cows-section-header">
-                <h2 class="cows-section-title">Mis vacas</h2>
+                <h2 class="cows-section-title">Mis vaquitas</h2>
               </div>
               ${
                 filteredMyCows.length === 0
                   ? `<div class="bank-empty-state">
-                      <div class="muted" style="margin-bottom:14px;">Aún no has creado ninguna vaca.</div>
-                      <button type="button" class="bank-btn bank-btn-secondary bank-btn-sm btnTriggerCreateCow">Crear vaca</button>
+                      <div class="muted" style="margin-bottom:14px;">Aún no has creado ninguna vaquita.</div>
+                      <button type="button" class="bank-btn bank-btn-secondary bank-btn-sm btnTriggerCreateCow">Crear vaquita</button>
                     </div>`
                   : cardGrid(filteredMyCows, true)
               }
@@ -144,7 +144,7 @@ export function initCows(containerId) {
               </div>
               ${
                 filteredOtherCows.length === 0
-                  ? `<div class="bank-empty-state"><div class="muted">Cuando alguien te invite, su vaca aparecerá aquí.</div></div>`
+                  ? `<div class="bank-empty-state"><div class="muted">Cuando alguien te invite con tu llave, su vaquita aparecerá aquí.</div></div>`
                   : cardGrid(filteredOtherCows, false)
               }
             </section>
@@ -247,7 +247,7 @@ export function initCows(containerId) {
     // Solo se muestra un estado cuando NO es el habitual (activa), para no repetir
     // una insignia idéntica en cada tarjeta.
     const statusBadge = isDisbursed
-      ? `<span class="badge badge-navy">Desembolsada</span>`
+      ? `<span class="badge badge-navy">Terminada</span>`
       : isCompleted
       ? `<span class="badge badge-success">Meta lograda</span>`
       : isCancelled
@@ -305,18 +305,18 @@ export function initCows(containerId) {
           }
         </div>
 
-        <div style="display:flex;gap:8px;margin-top:20px;">
-          <button type="button" class="bank-btn bank-btn-secondary bank-btn-sm btnViewMembers" data-id="${cow.id}" style="flex:1;">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:20px;">
+          <button type="button" class="bank-btn bank-btn-secondary bank-btn-sm btnViewMembers" data-id="${cow.id}" style="flex:1 1 calc(50% - 4px);">
             ${detailBtnLabel}
           </button>
           ${
             canContribute
-              ? `<button type="button" class="bank-btn bank-btn-primary bank-btn-sm btnOpenContribute" data-id="${cow.id}" style="flex:1;">Aportar</button>`
+              ? `<button type="button" class="bank-btn bank-btn-primary bank-btn-sm btnOpenContribute" data-id="${cow.id}" style="flex:1 1 calc(50% - 4px);">Aportar</button>`
               : ""
           }
           ${
             canDisburse
-              ? `<button type="button" class="bank-btn bank-btn-success bank-btn-sm btnOpenDisburse" data-id="${cow.id}" style="flex:1;">Desembolsar</button>`
+              ? `<button type="button" class="bank-btn bank-btn-success bank-btn-sm btnOpenDisburse" data-id="${cow.id}" style="flex:1 1 100%;">Terminar Vaquita</button>`
               : ""
           }
         </div>
@@ -338,21 +338,21 @@ export function initCows(containerId) {
   }
 
   /**
-   * Modal 1: Creación de Vaca (nombre, meta, privacidad e invitados).
+   * Modal 1: Creación de Vaquita (nombre, meta, privacidad e invitados por llave @ABC123).
    */
   function openCreateModal() {
     const root = getModalRoot();
     const active = store.getActiveUser();
-    const availableContacts = store.getUsers().filter((u) => u.id !== active.id);
 
     let selectedVisibility = "PUBLIC"; // 'PUBLIC' | 'ANONYMOUS'
+    const invitedKeys = [];
 
     root.innerHTML = `
       <div class="bank-modal-overlay">
         <div class="bank-modal-content">
           
           <div class="modal-head">
-            <h3 class="modal-title">Nueva vaca</h3>
+            <h3 class="modal-title">Nueva vaquita</h3>
             <button type="button" class="btn-icon btnModalClose" aria-label="Cerrar">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -376,7 +376,7 @@ export function initCows(containerId) {
 
             <!-- Privacidad: dos casos claramente diferenciados -->
             <div>
-              <span class="bank-label">Tipo de vaca</span>
+              <span class="bank-label">Tipo de vaquita</span>
               <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:10px;">
                 <div class="privacy-option-card selected" id="optPrivacyPublic" data-val="PUBLIC" role="radio" aria-checked="true" tabindex="0">
                   <div class="privacy-radio-circle"></div>
@@ -396,38 +396,18 @@ export function initCows(containerId) {
             </div>
 
             <div>
-              <div class="kv" style="margin-bottom:6px;">
-                <span class="bank-label" style="margin:0;">Invitar</span>
-                <div style="display:flex;gap:12px;">
-                  <button type="button" id="btnSelectAllContacts" class="btn-link">Todos</button>
-                  <button type="button" id="btnUnselectAllContacts" class="btn-link" style="color:#64748B;">Ninguno</button>
-                </div>
+              <label class="bank-label" for="inviteKeyInput">Invitar con llave única (@ABC123)</label>
+              <div style="display:flex;gap:8px;">
+                <input id="inviteKeyInput" class="bank-input tabular-nums" type="text" placeholder="Ej. @BOB222" maxlength="7" />
+                <button type="button" id="btnAddInviteKey" class="bank-btn bank-btn-secondary" style="white-space:nowrap;">Agregar</button>
               </div>
-              <div style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;">
-                ${
-                  availableContacts.length === 0
-                    ? `<span class="muted">No hay otras personas registradas.</span>`
-                    : availableContacts
-                        .map(
-                          (c) => `
-                          <label class="contact-invite-row checked">
-                            <span style="display:flex;align-items:center;gap:10px;">
-                              <input type="checkbox" class="cowInviteCheckbox" value="${c.id}" checked style="width:16px;height:16px;accent-color:#173B63;cursor:pointer;" />
-                              <span style="font-size:14px;font-weight:600;color:#0F172A;">${c.name}</span>
-                            </span>
-                            <span class="muted tabular-nums" style="font-size:12px;">${c.phone}</span>
-                          </label>
-                        `
-                        )
-                        .join("")
-                }
-              </div>
+              <div id="invitedKeysContainer" class="chips" style="margin-top:8px;"></div>
             </div>
 
             <div class="modal-actions">
               <button type="button" class="bank-btn bank-btn-secondary btnModalClose">Cancelar</button>
               <button type="submit" id="btnSubmitCreateCow" class="bank-btn bank-btn-primary" ${isSubmitting ? "disabled" : ""}>
-                ${isSubmitting ? `<span class="bank-spinner"></span> Creando…` : "Crear vaca"}
+                ${isSubmitting ? `<span class="bank-spinner"></span> Creando…` : "Crear vaquita"}
               </button>
             </div>
 
@@ -440,6 +420,9 @@ export function initCows(containerId) {
     root.querySelectorAll(".btnModalClose").forEach((b) => b.addEventListener("click", closeModal));
 
     const inputTarget = root.querySelector("#cowTargetAmount");
+    const inviteKeyInput = root.querySelector("#inviteKeyInput");
+    const btnAddInviteKey = root.querySelector("#btnAddInviteKey");
+    const invitedKeysContainer = root.querySelector("#invitedKeysContainer");
 
     // Control de selección de privacidad
     const optPublic = root.querySelector("#optPrivacyPublic");
@@ -466,39 +449,73 @@ export function initCows(containerId) {
       });
     });
 
-    // Seleccionar / Deseleccionar todos los contactos
-    const btnSelectAll = root.querySelector("#btnSelectAllContacts");
-    const btnUnselectAll = root.querySelector("#btnUnselectAllContacts");
-    const checkboxes = root.querySelectorAll(".cowInviteCheckbox");
+    function renderInvitedKeys() {
+      if (!invitedKeysContainer) return;
+      if (invitedKeys.length === 0) {
+        invitedKeysContainer.innerHTML = `<span class="muted" style="font-size:12px;">Sin llaves invitadas aún.</span>`;
+        return;
+      }
+      invitedKeysContainer.innerHTML = invitedKeys
+        .map(
+          (k) => `
+          <button type="button" class="bank-btn-chip btnRemoveInviteKey tabular-nums" data-key="${k}" title="Quitar ${k}">
+            ${k} ×
+          </button>
+        `
+        )
+        .join("");
 
-    if (btnSelectAll) {
-      btnSelectAll.addEventListener("click", () => {
-        checkboxes.forEach((cb) => {
-          cb.checked = true;
-          cb.closest(".contact-invite-row")?.classList.add("checked");
+      invitedKeysContainer.querySelectorAll(".btnRemoveInviteKey").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const keyToRemove = btn.getAttribute("data-key");
+          const idx = invitedKeys.indexOf(keyToRemove);
+          if (idx !== -1) {
+            invitedKeys.splice(idx, 1);
+            renderInvitedKeys();
+          }
         });
       });
     }
 
-    if (btnUnselectAll) {
-      btnUnselectAll.addEventListener("click", () => {
-        checkboxes.forEach((cb) => {
-          cb.checked = false;
-          cb.closest(".contact-invite-row")?.classList.remove("checked");
-        });
-      });
+    function tryAddKey(rawVal, silentIfEmpty = false) {
+      let clean = (rawVal || "").trim().toUpperCase();
+      if (!clean) {
+        if (!silentIfEmpty) showToast("Escribe una llave @ABC123 para agregar", "warning");
+        return true;
+      }
+      if (!clean.startsWith("@")) {
+        clean = `@${clean}`;
+      }
+      if (!/^@[A-Z]{3}[0-9]{3}$/.test(clean)) {
+        showToast("La llave debe iniciar con @ seguida de 3 letras y 3 números (ej. @BOB222)", "warning");
+        return false;
+      }
+      if (active.userKey && clean === active.userKey.toUpperCase()) {
+        showToast("Ya eres el creador de esta vaquita", "warning");
+        return false;
+      }
+      if (!invitedKeys.includes(clean)) {
+        invitedKeys.push(clean);
+        renderInvitedKeys();
+      }
+      if (inviteKeyInput) inviteKeyInput.value = "";
+      return true;
     }
 
-    // Toggle visual de checkbox
-    checkboxes.forEach((cb) => {
-      cb.addEventListener("change", (e) => {
-        const row = e.target.closest(".contact-invite-row");
-        if (row) {
-          if (e.target.checked) row.classList.add("checked");
-          else row.classList.remove("checked");
+    renderInvitedKeys();
+
+    if (btnAddInviteKey && inviteKeyInput) {
+      btnAddInviteKey.addEventListener("click", () => {
+        tryAddKey(inviteKeyInput.value, false);
+        inviteKeyInput.focus();
+      });
+      inviteKeyInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          tryAddKey(inviteKeyInput.value, false);
         }
       });
-    });
+    }
 
     // Envío del formulario
     const form = root.querySelector("#createCowForm");
@@ -508,11 +525,13 @@ export function initCows(containerId) {
       const desc = root.querySelector("#cowDescription").value.trim();
       const target = Number(inputTarget.value);
 
-      const inviteCheckboxes = root.querySelectorAll(".cowInviteCheckbox:checked");
-      const invitedUserIds = Array.from(inviteCheckboxes).map((cb) => cb.value);
+      if (inviteKeyInput && inviteKeyInput.value.trim()) {
+        const addedOk = tryAddKey(inviteKeyInput.value, true);
+        if (!addedOk) return;
+      }
 
       if (!title) {
-        showToast("El nombre de la vaca es obligatorio", "warning");
+        showToast("El nombre de la vaquita es obligatorio", "warning");
         return;
       }
       if (isNaN(target) || target <= 0) {
@@ -525,12 +544,13 @@ export function initCows(containerId) {
       if (submitBtn) submitBtn.disabled = true;
 
       try {
-        await api.createCow(title, desc, target, selectedVisibility, null, invitedUserIds);
-        showToast(`Vaca "${title}" creada exitosamente`, "success");
+        await api.createCow(title, desc, target, selectedVisibility, null, invitedKeys);
+        showToast(`Vaquita "${title}" creada exitosamente`, "success");
         closeModal();
         await loadCows();
       } catch (err) {
         showToast(err.message, "error");
+        if (submitBtn) submitBtn.disabled = false;
       } finally {
         isSubmitting = false;
       }
@@ -616,7 +636,7 @@ export function initCows(containerId) {
   }
 
   /**
-   * Modal 3: Liquidación y Desembolso hacia la cuenta personal del Creador.
+   * Modal 3: Liquidación ("Terminar Vaquita") hacia la cuenta personal del Creador.
    */
   function openDisburseModal(cow) {
     const root = getModalRoot();
@@ -625,7 +645,7 @@ export function initCows(containerId) {
       <div class="bank-modal-overlay">
         <div class="bank-modal-content">
           <div class="modal-head">
-            <h3 class="modal-title">Desembolsar ${cow.title}</h3>
+            <h3 class="modal-title">Terminar Vaquita: ${cow.title}</h3>
             <button type="button" class="btn-icon btnModalClose" aria-label="Cerrar">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -637,7 +657,7 @@ export function initCows(containerId) {
           <div class="modal-actions">
             <button type="button" class="bank-btn bank-btn-secondary btnModalClose">Cancelar</button>
             <button type="button" id="btnConfirmDisburse" class="bank-btn bank-btn-success" ${isSubmitting ? "disabled" : ""}>
-              ${isSubmitting ? `<span class="bank-spinner"></span> Desembolsando…` : "Desembolsar"}
+              ${isSubmitting ? `<span class="bank-spinner"></span> Terminando…` : "Terminar Vaquita"}
             </button>
           </div>
         </div>
@@ -653,7 +673,7 @@ export function initCows(containerId) {
 
       try {
         await api.disburseCow(cow.id);
-        showToast(`Desembolso de ${formatCOP(cow.collected_amount)} ejecutado con éxito`, "success");
+        showToast(`Vaquita terminada: ${formatCOP(cow.collected_amount)} transferidos a tu cuenta`, "success");
         closeModal();
         await Promise.all([
           loadCows(),
@@ -694,7 +714,7 @@ export function initCows(containerId) {
     const modalTitle = isAnonymous
       ? isCreator
         ? "Invitados y aportes"
-        : "Aportes en la vaca"
+        : "Aportes en la vaquita"
       : isCreator
       ? "Personas invitadas"
       : "Aportes realizados";

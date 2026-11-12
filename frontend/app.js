@@ -89,7 +89,7 @@ document.addEventListener("DOMContentLoaded", () => {
       reloadDashboard();
     } else if (view === "cows") {
       setActiveSidebar(sideNavCows);
-      if (currentViewTitle) currentViewTitle.textContent = "Vacas";
+      if (currentViewTitle) currentViewTitle.textContent = "Vaquitas";
       if (cowsSection) cowsSection.style.display = "block";
       store.setActiveTab("cows");
       reloadCows();
@@ -134,6 +134,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <h2 class="card-title">Cuenta</h2>
         <dl class="def-list">
           <dt>Titular</dt><dd>${active.name}</dd>
+          <dt>Llave única</dt><dd class="tabular-nums">${active.userKey || "@ALI111"}</dd>
           <dt>Celular</dt><dd class="tabular-nums">${active.phone}</dd>
           <dt>Cuenta</dt><dd class="tabular-nums">${active.accountNumber || "ACC-001"}</dd>
           <dt>Moneda</dt><dd>COP</dd>
@@ -143,23 +144,27 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
   }
 
-  // Vista de Ayuda: preguntas frecuentes plegables (<details>) para no saturar la vista.
+  // Vista de Ayuda: explica qué es la Vaquita, cómo funciona, sus 2 tipos y las llaves @ABC123.
   function renderHelpView() {
     const root = document.getElementById("helpRoot");
     if (!root) return;
 
     const faqs = [
       [
-        "¿Qué es una vaca anónima?",
-        "Cada participante ve solo su propio aporte. El servidor oculta los aportes de los demás antes de responder.",
+        "¿Qué es una Vaquita y cómo funciona?",
+        "Es un bolsillo grupal para reunir dinero entre varias personas hacia una meta común. El creador define el nombre y la meta en pesos, invita a los participantes usando su llave única (@ABC123), cada invitado aporta desde su saldo disponible y, cuando el organizador decida cerrarla, usa el botón «Terminar Vaquita» para recibir el total recaudado en su cuenta personal.",
       ],
       [
-        "¿Por qué cada movimiento muestra un saldo?",
-        "Cada asiento guarda el saldo resultante en el momento de la operación, así el historial es verificable.",
+        "¿Cuáles son los 2 tipos de Vaquita?",
+        "<strong>1. Vaquita Pública:</strong> El creador puede ver cuánto han aportado todas las personas que invitó (incluso quienes llevan $0). Las personas invitadas solo ven los aportes ya realizados por los demás participantes.<br><br><strong>2. Vaquita Privada:</strong> Solo el creador sabe quiénes son todas las personas invitadas. El resto de participantes no ve la lista de invitados y todos observan cómo se van llenando los aportes con avisos anónimos como <em>«Alguien ha aportado $60.000»</em>.",
       ],
       [
-        "¿Cómo agrego personas?",
-        "Usa el botón + en la cabecera. La nueva persona queda lista para transferir y unirse a vacas.",
+        "¿Cómo funcionan las llaves únicas (@ABC123)?",
+        "Cada persona tiene una llave única (inspirada en Bre-B) que inicia con <code>@</code> seguida de 3 letras y 3 números (por ejemplo <code>@ALI111</code>, <code>@BOB222</code> o <code>@CHA333</code>). Puedes ver la llave de cada usuario en el panel de cambiar de cuenta y usarla para transferir dinero o invitar personas a una Vaquita sin exponer el listado de todos los usuarios.",
+      ],
+      [
+        "¿Cómo agrego una nueva persona?",
+        "Usa el botón «+» en la barra superior. Al registrarla se crea su cuenta en pesos y se le asigna automáticamente su llave única @ABC123 para enviar dinero o sumarse a Vaquitas.",
       ],
     ];
 
@@ -167,8 +172,8 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="stack-sm" style="max-width:720px;">
         ${faqs
           .map(
-            ([q, a]) => `
-            <details class="disclosure">
+            ([q, a], idx) => `
+            <details class="disclosure" ${idx < 2 ? "open" : ""}>
               <summary>${q}</summary>
               <div class="disclosure-body">${a}</div>
             </details>

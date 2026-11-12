@@ -12,6 +12,39 @@ export function computeInitials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+export function computeFallbackUserKey(userId, fullName) {
+  const cleanId = String(userId || "").toLowerCase();
+  if (
+    cleanId === "11111111-1111-4111-8111-111111111111" ||
+    cleanId === "11111111-1111-1111-1111-111111111111"
+  ) {
+    return "@ALI111";
+  }
+  if (
+    cleanId === "22222222-1111-4222-8222-222222222222" ||
+    cleanId === "22222222-2222-2222-2222-222222222222"
+  ) {
+    return "@BOB222";
+  }
+  if (
+    cleanId === "33333333-1111-4333-8333-333333333333" ||
+    cleanId === "33333333-3333-3333-3333-333333333333"
+  ) {
+    return "@CHA333";
+  }
+
+  const letters = String(fullName || "USR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z]/g, "")
+    .toUpperCase()
+    .slice(0, 3)
+    .padEnd(3, "X");
+  const hexTail = cleanId.replace(/[^0-9a-f]/g, "").slice(-6) || "000";
+  const digits = String(parseInt(hexTail, 16) % 1000).padStart(3, "0");
+  return `@${letters}${digits}`;
+}
+
 export const DEMO_USERS = {
   alice: {
     key: "alice",
@@ -22,6 +55,7 @@ export const DEMO_USERS = {
     role: "Titular",
     email: "alice@habireto.com",
     phone: "+573001111111",
+    userKey: "@ALI111",
     initials: "AT",
     accountNumber: "ACC-ALICE1",
   },
@@ -34,6 +68,7 @@ export const DEMO_USERS = {
     role: "Roommate",
     email: "bob@habireto.com",
     phone: "+573002222222",
+    userKey: "@BOB222",
     initials: "BR",
     accountNumber: "ACC-BOB2",
   },
@@ -46,6 +81,7 @@ export const DEMO_USERS = {
     role: "Amigo",
     email: "charlie@habireto.com",
     phone: "+573003333333",
+    userKey: "@CHA333",
     initials: "CA",
     accountNumber: "ACC-CHARLIE3",
   },
@@ -95,6 +131,7 @@ class StateStore {
         role: demo ? demo.role : "Usuario",
         email: u.email,
         phone: u.phone_number,
+        userKey: u.user_key || (demo ? demo.userKey : computeFallbackUserKey(u.id, u.full_name)),
         initials: computeInitials(u.full_name),
         accountNumber: u.account_number || (demo ? demo.accountNumber : "Cuenta"),
         balance: u.balance !== undefined ? u.balance : null,
@@ -121,6 +158,7 @@ class StateStore {
       role: "Usuario",
       email: newUser.email,
       phone: newUser.phone_number,
+      userKey: newUser.user_key || computeFallbackUserKey(newUser.id, newUser.full_name),
       initials: computeInitials(newUser.full_name),
       accountNumber: newUser.account_number || "Cuenta Corriente",
       balance: newUser.balance !== undefined ? newUser.balance : 0,
