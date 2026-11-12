@@ -6,7 +6,7 @@ reproducir con exactitud los flujos de demostración sin alterar contratos API.
 """
 
 import uuid
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from habireto.models.account import Account, AccountStatus, AccountType
@@ -277,7 +277,22 @@ class SeedService:
         }
 
     @staticmethod
+    async def remove_default_demo_cows(session: AsyncSession) -> None:
+        """Elimina las Vaquitas de demostración por defecto si existían previamente sin movimientos.
+
+        Garantiza que el sistema inicie limpio únicamente con las personas registradas
+        y cero Vaquitas precargadas.
+        """
+        default_cow_ids = [PUBLIC_COW_ID, ANONYMOUS_COW_ID]
+        for cid in default_cow_ids:
+            cow = (await session.execute(select(Cow).where(Cow.id == cid))).scalar_one_or_none()
+            if cow is not None:
+                await session.execute(delete(CowMember).where(CowMember.cow_id == cid))
+                await session.execute(delete(Cow).where(Cow.id == cid))
+        await session.flush()
+
+    @staticmethod
     async def seed_all(session: AsyncSession) -> None:
-        """Siembra el conjunto completo de identidades y fondos de prueba."""
+        """Siembra únicamente las identidades iniciales manteniendo el sistema sin Vaquitas por defecto."""
         await SeedService.seed_demo_users_and_accounts(session)
-        await SeedService.seed_demo_cows(session)
+        await SeedService.remove_default_demo_cows(session)

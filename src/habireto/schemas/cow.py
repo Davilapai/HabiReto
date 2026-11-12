@@ -47,6 +47,10 @@ class CowCreateRequest(BaseModel):
         default_factory=list,
         description="Lista de identificadores de usuarios invitados formalmente a participar.",
     )
+    invited_keys: list[str] = Field(
+        default_factory=list,
+        description="Lista de llaves únicas estilo Bre-B (@ABC123) de usuarios invitados a participar.",
+    )
 
 
 class CowContributeRequest(BaseModel):

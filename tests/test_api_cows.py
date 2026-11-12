@@ -277,3 +277,27 @@ class TestApiCows(unittest.IsolatedAsyncioTestCase):
         res_view = await self.client.get(f"/api/v1/cows/{cow_id}", headers={"X-User-Id": creator["user_id"]})
         self.assertEqual(res_view.json()["status"], "CANCELLED")
         self.assertEqual(res_view.json()["collected_amount"], 0)
+
+    async def test_create_cow_with_invited_keys_bre_b(self) -> None:
+        """Verifica que la creación de una Vaquita permita invitar participantes mediante su llave @ABC123."""
+        import uuid as _uuid
+        from habireto.schemas.user import compute_user_key
+
+        creator = await self._create_user_and_account("Elena", "elena@test.com", "+5730010", 500000)
+        guest = await self._create_user_and_account("Fernando", "fer@test.com", "+5730020", 500000)
+        guest_key = compute_user_key(_uuid.UUID(guest["user_id"]), "Fernando")
+
+        res = await self.client.post(
+            "/api/v1/cows",
+            headers={"X-User-Id": creator["user_id"]},
+            json={
+                "title": "Vaquita por Llave",
+                "target_amount": 300000,
+                "visibility_type": "PUBLIC",
+                "invited_keys": [guest_key],
+            },
+        )
+        self.assertEqual(res.status_code, 201)
+        data = res.json()
+        member_ids = [m["user_id"] for m in data["members"]]
+        self.assertIn(guest["user_id"], member_ids)

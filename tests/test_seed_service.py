@@ -34,8 +34,8 @@ class TestSeedService(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.session = InMemoryAsyncSession()
 
-    async def test_seed_creates_all_demo_users_and_cows(self) -> None:
-        """Verifica que la primera ejecución cree las 3 identidades y 2 vacas."""
+    async def test_seed_creates_all_demo_users_without_default_cows(self) -> None:
+        """Verifica que seed_all cree las 3 identidades demo y que el sistema inicie sin vacas por defecto."""
         await SeedService.seed_all(cast(AsyncSession, self.session))
 
         # Verificar Alice
@@ -59,19 +59,14 @@ class TestSeedService(unittest.IsolatedAsyncioTestCase):
         charlie = (await self.session.execute(stmt_charlie)).scalar_one_or_none()
         self.assertIsNotNone(charlie)
 
-        # Verificar Vaca Pública
+        # Verificar que NO se siembren vacas por defecto en seed_all
         stmt_pub = select(Cow).where(Cow.id == PUBLIC_COW_ID)
         pub_cow = (await self.session.execute(stmt_pub)).scalar_one_or_none()
-        self.assertIsNotNone(pub_cow)
-        self.assertEqual(pub_cow.creator_id, ALICE_USER_ID)
-        self.assertEqual(pub_cow.visibility_type, CowVisibilityType.PUBLIC.value)
+        self.assertIsNone(pub_cow)
 
-        # Verificar Vaca Anónima
         stmt_anon = select(Cow).where(Cow.id == ANONYMOUS_COW_ID)
         anon_cow = (await self.session.execute(stmt_anon)).scalar_one_or_none()
-        self.assertIsNotNone(anon_cow)
-        self.assertEqual(anon_cow.creator_id, CHARLIE_USER_ID)
-        self.assertEqual(anon_cow.visibility_type, CowVisibilityType.ANONYMOUS.value)
+        self.assertIsNone(anon_cow)
 
     async def test_seed_idempotency_safe_multiple_runs(self) -> None:
         """Verifica que ejecutar el sembrado repetidas veces no altere el saldo ni cause fallos."""

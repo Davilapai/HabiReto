@@ -172,3 +172,26 @@ class TestApiTransfers(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(res_conflict.status_code, 409)
         self.assertIn("utilizada previamente", res_conflict.json()["detail"])
+
+    async def test_transfer_by_destination_key_bre_b(self) -> None:
+        """Verifica que se pueda transferir usando la llave única @ABC123 del destinatario."""
+        import uuid as _uuid
+        from habireto.schemas.user import compute_user_key
+
+        acc_a, acc_b = await self._setup_accounts()
+        dest_key = compute_user_key(_uuid.UUID(acc_b["user_id"]), "Felipe Naranjo")
+
+        res = await self.client.post(
+            "/transfers",
+            headers={"X-User-Id": acc_a["user_id"]},
+            json={
+                "source_account_id": acc_a["id"],
+                "destination_key": dest_key,
+                "amount": 120000,
+                "description": "Pago con llave Bre-B",
+            },
+        )
+        self.assertEqual(res.status_code, 200)
+
+        bal_b = await self.client.get(f"/accounts/{acc_b['id']}/balance", headers={"X-User-Id": acc_b["user_id"]})
+        self.assertEqual(bal_b.json()["balance"], 220000)
