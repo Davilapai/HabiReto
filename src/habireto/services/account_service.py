@@ -27,6 +27,7 @@ from habireto.models.ledger import (
     TransactionType,
 )
 from habireto.models.user import User
+from habireto.schemas.user import compute_user_key
 
 
 def generate_account_number(prefix: str = "ACC") -> str:
@@ -394,3 +395,56 @@ class AccountService:
             .offset(offset)
         )
         return list((await session.execute(stmt)).scalars().all())
+
+    @staticmethod
+    async def get_user_by_key(
+        session: AsyncSession,
+        user_key: str,
+    ) -> User | None:
+        """Localiza a un usuario registrado mediante su llave única estilo Bre-B (@ABC123).
+
+        Args:
+            session: Sesión asíncrona de base de datos activa.
+            user_key: Llave con formato '@ABC123' (insensible a mayúsculas/minúsculas).
+
+        Returns:
+            User | None: Entidad del usuario correspondiente o None si no existe.
+        """
+        normalized_key = (user_key or "").strip().upper()
+        if not normalized_key.startswith("@"):
+            normalized_key = f"@{normalized_key}"
+
+        stmt = select(User)
+        users = (await session.execute(stmt)).scalars().all()
+        for user in users:
+            if compute_user_key(user.id, user.full_name) == normalized_key:
+                return user
+        return None
+
+    @staticmethod
+    async def get_account_by_user_key(
+        session: AsyncSession,
+        user_key: str,
+    ) -> Account | None:
+        """Obtiene la cuenta personal principal asociada a la llave @ABC123 de un usuario.
+
+        Args:
+            session: Sesión asíncrona de base de datos activa.
+            user_key: Llave única estilo Bre-B (@ABC123) del usuario destinatario.
+
+        Returns:
+            Account | None: Cuenta personal principal del usuario o None si no existe.
+        """
+        user = await AccountService.get_user_by_key(session, user_key)
+        if user is None:
+            return None
+
+        stmt = (
+            select(Account)
+            .where(
+                Account.user_id == user.id,
+                Account.account_type == AccountType.USER.value,
+            )
+            .order_by(Account.created_at.asc())
+        )
+        return (await session.execute(stmt)).scalars().first()

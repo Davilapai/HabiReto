@@ -16,9 +16,14 @@ class TransferRequest(BaseModel):
         ...,
         description="Identificador único de la cuenta origen que envía el dinero.",
     )
-    destination_account_id: uuid.UUID = Field(
-        ...,
+    destination_account_id: uuid.UUID | None = Field(
+        default=None,
         description="Identificador único de la cuenta destino receptora de los fondos.",
+    )
+    destination_key: str | None = Field(
+        default=None,
+        max_length=20,
+        description="Llave única estilo Bre-B (@ABC123) de la persona destinataria.",
     )
     amount: int = Field(
         ...,
@@ -32,9 +37,17 @@ class TransferRequest(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_different_accounts(self) -> "TransferRequest":
-        """Valida que la cuenta origen y destino sean estrictamente diferentes."""
-        if self.source_account_id == self.destination_account_id:
+    def validate_destination_and_different_accounts(self) -> "TransferRequest":
+        """Valida que exista un destino (ID o llave @ABC123) y que no sea igual al origen."""
+        clean_key = (self.destination_key or "").strip()
+        if self.destination_account_id is None and not clean_key:
+            raise ValueError(
+                "Debe especificar la cuenta destino o la llave única (@ABC123) del destinatario."
+            )
+        if (
+            self.destination_account_id is not None
+            and self.source_account_id == self.destination_account_id
+        ):
             raise ValueError("No es posible transferir fondos hacia la misma cuenta de origen.")
         return self
 

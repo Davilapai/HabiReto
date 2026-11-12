@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Header, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from habireto.api.deps import get_current_user_id, get_db_session
-from habireto.core.exceptions import AccountNotFoundError, UnauthorizedError
+from habireto.core.exceptions import AccountNotFoundError, SelfTransferError, UnauthorizedError
 from habireto.schemas.transfer import TransferRequest, TransferResponse
 from habireto.services.account_service import AccountService
 from habireto.services.idempotency_service import IdempotencyService
@@ -48,6 +48,20 @@ async def create_transfer(
     if source_acc.user_id != current_user_id:
         raise UnauthorizedError("No está autorizado para transferir fondos desde una cuenta ajena.")
 
+    destination_account_id = payload.destination_account_id
+    if destination_account_id is None:
+        raw_key = (payload.destination_key or "").strip().upper()
+        dest_acc = await AccountService.get_account_by_user_key(session, raw_key)
+        if dest_acc is None:
+            raise AccountNotFoundError(
+                f"No se encontró ninguna persona registrada con la llave '{raw_key}'."
+            )
+        if dest_acc.id == payload.source_account_id:
+            raise SelfTransferError(
+                "No es posible transferir fondos hacia tu propia llave (@ABC123)."
+            )
+        destination_account_id = dest_acc.id
+
     request_hash = ""
     if idempotency_key is not None:
         request_hash = IdempotencyService.compute_request_hash(payload.model_dump())
@@ -65,7 +79,7 @@ async def create_transfer(
     tx = await AccountService.transfer(
         session=session,
         source_account_id=payload.source_account_id,
-        destination_account_id=payload.destination_account_id,
+        destination_account_id=destination_account_id,
         amount=payload.amount,
         idempotency_key=idempotency_key,
         description=payload.description,

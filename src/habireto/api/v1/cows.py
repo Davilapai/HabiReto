@@ -12,13 +12,14 @@ from fastapi import APIRouter, Depends, Header, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from habireto.api.deps import get_current_user_id, get_db_session
-from habireto.core.exceptions import CowNotFoundError
+from habireto.core.exceptions import AccountNotFoundError, CowNotFoundError
 from habireto.schemas.cow import (
     CowContributeRequest,
     CowCreateRequest,
     CowDetailResponse,
 )
 from habireto.schemas.transfer import TransferResponse
+from habireto.services.account_service import AccountService
 from habireto.services.cow_service import CowService
 from habireto.services.idempotency_service import IdempotencyService
 
@@ -29,15 +30,28 @@ router = APIRouter(prefix="/cows", tags=["Cows"])
     "",
     response_model=CowDetailResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Crear fondo colaborativo (Vaca)",
-    description="Crea una nueva Vaca con su cuenta bóveda custodia dedicada y vincula al creador.",
+    summary="Crear fondo colaborativo (Vaquita)",
+    description="Crea una nueva Vaquita con su cuenta bóveda custodia dedicada y vincula al creador e invitados.",
 )
 async def create_cow(
     payload: CowCreateRequest,
     current_user_id: uuid.UUID = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db_session),
 ) -> CowDetailResponse:
-    """Crea una nueva iniciativa colaborativa con su bóveda custodia."""
+    """Crea una nueva iniciativa colaborativa resolviendo invitaciones por ID o por llave @ABC123."""
+    resolved_invited_ids: list[uuid.UUID] = list(payload.invited_user_ids)
+    for raw_key in payload.invited_keys:
+        clean_key = raw_key.strip().upper()
+        if not clean_key:
+            continue
+        invited_user = await AccountService.get_user_by_key(session, clean_key)
+        if invited_user is None:
+            raise AccountNotFoundError(
+                f"No se encontró ninguna persona registrada con la llave '{clean_key}'."
+            )
+        if invited_user.id not in resolved_invited_ids:
+            resolved_invited_ids.append(invited_user.id)
+
     cow = await CowService.create_cow(
         session=session,
         creator_user_id=current_user_id,
@@ -46,7 +60,7 @@ async def create_cow(
         target_amount=payload.target_amount,
         visibility_type=payload.visibility_type,
         deadline=payload.deadline,
-        invited_user_ids=payload.invited_user_ids,
+        invited_user_ids=resolved_invited_ids,
     )
 
     # Carga completa para serialización
