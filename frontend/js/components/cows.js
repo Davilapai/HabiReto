@@ -1,12 +1,12 @@
 /**
  * Módulo de Fondos Colaborativos ("Vacas") para HabiReto.
  * 
- * Gestiona la visualización jerárquica de iniciativas financieras ("Mis Vacas" vs "Otras Vacas"),
- * creación asistida con vista previa en vivo, aportes atómicos con validación de saldo,
+ * Gestiona la visualización de iniciativas ("Mis vacas" vs "Donde participo"),
+ * creación con privacidad e invitados, aportes atómicos con validación de saldo,
  * liquidación por desembolso a la cuenta del creador y consulta de miembros con reglas Zero-Trust.
  */
 
-import { api, formatCOP, formatDate } from "../api.js";
+import { api, formatCOP } from "../api.js";
 import { store } from "../state.js";
 import { showToast } from "./toast.js";
 
@@ -79,187 +79,78 @@ export function initCows(containerId) {
     const filteredMyCows = filterBySearch(myCows);
     const filteredOtherCows = filterBySearch(otherCows);
 
-    // Métricas de resumen financiero
-    const totalCollectedInMyCows = myCows.reduce((acc, c) => acc + (c.collected_amount || 0), 0);
-    const totalMyContributions = allCows.reduce((acc, c) => acc + (c.my_contribution || 0), 0);
-    const activeCowsCount = allCows.filter((c) => c.status === "ACTIVE" || c.status === "COMPLETED").length;
+    const showMine = activeTabFilter === "all" || activeTabFilter === "mine";
+    const showOthers = activeTabFilter === "all" || activeTabFilter === "others";
+    const cardGrid = (list, isMine) =>
+      `<div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:16px;">
+        ${list.map((cow) => renderCowCard(cow, active, isMine)).join("")}
+      </div>`;
 
+    // Una sola barra de control (filtros + búsqueda + crear) y dos secciones.
+    // Se eliminan las tarjetas de métricas: los contadores ya están en las pestañas.
     container.innerHTML = `
-      <div style="display:flex;flex-direction:column;gap:24px;">
-        
-        <!-- Cabecera del Módulo con Resumen Estadístico y Botón de Creación -->
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
-          <div>
-            <h1 style="font-size:24px;font-weight:700;color:#0F172A;margin:0 0 4px 0;letter-spacing:-0.4px;">
-              Fondos Colaborativos ("Vacas")
-            </h1>
-            <p style="font-size:14px;color:#64748B;margin:0;">
-              Ahorro grupal con cuentas bóveda dedicadas, partida doble y privacidad Zero-Trust.
-            </p>
-          </div>
-          <button type="button" id="btnOpenCreateCow" class="bank-btn bank-btn-primary" style="padding:10px 18px;font-size:14px;gap:8px;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            <span>Crear Nueva Vaca</span>
-          </button>
-        </div>
+      <div class="page">
 
-        <!-- Fila de Tarjetas de Resumen Rápido -->
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:16px;">
-          <div class="bank-card" style="padding:18px 20px;">
-            <span style="font-size:12px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:0.5px;">Mis Vacas Creadas</span>
-            <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;">
-              <span class="tabular-nums" style="font-size:24px;font-weight:700;color:#0F172A;">${myCows.length}</span>
-              <span style="font-size:12px;color:#64748B;">iniciativa(s)</span>
-            </div>
-            <div style="font-size:12px;color:#0E744A;margin-top:4px;font-weight:500;">
-              Total recaudado: <span class="tabular-nums font-semibold">${formatCOP(totalCollectedInMyCows)}</span>
-            </div>
-          </div>
-
-          <div class="bank-card" style="padding:18px 20px;">
-            <span style="font-size:12px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:0.5px;">Otras Vacas (Participante)</span>
-            <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;">
-              <span class="tabular-nums" style="font-size:24px;font-weight:700;color:#0F172A;">${otherCows.length}</span>
-              <span style="font-size:12px;color:#64748B;">fondos compartidos</span>
-            </div>
-            <div style="font-size:12px;color:#173B63;margin-top:4px;font-weight:500;">
-              Mis aportes acumulados: <span class="tabular-nums font-semibold">${formatCOP(totalMyContributions)}</span>
-            </div>
-          </div>
-
-          <div class="bank-card" style="padding:18px 20px;">
-            <span style="font-size:12px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:0.5px;">Vacas en Recaudación</span>
-            <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px;">
-              <span class="tabular-nums" style="font-size:24px;font-weight:700;color:#0E744A;">${activeCowsCount}</span>
-              <span style="font-size:12px;color:#64748B;">activas / en meta</span>
-            </div>
-            <div style="font-size:12px;color:#64748B;margin-top:4px;">
-              Custodia protegida por PostgreSQL
-            </div>
-          </div>
-        </div>
-
-        <!-- Barra de Control: Pestañas de Segmentación y Buscador -->
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
-          <!-- Pestañas de Clasificación -->
-          <div class="cows-filter-tabs">
-            <button type="button" class="cows-filter-tab ${activeTabFilter === 'all' ? 'active' : ''}" data-tab="all">
-              <span>Todas</span>
-              <span class="cows-tab-count">${allCows.length}</span>
+        <div class="toolbar">
+          <div class="cows-filter-tabs" role="tablist">
+            <button type="button" class="cows-filter-tab ${activeTabFilter === "all" ? "active" : ""}" data-tab="all">
+              Todas <span class="cows-tab-count">${allCows.length}</span>
             </button>
-            <button type="button" class="cows-filter-tab ${activeTabFilter === 'mine' ? 'active' : ''}" data-tab="mine">
-              <span>Mis Vacas</span>
-              <span class="cows-tab-count">${myCows.length}</span>
+            <button type="button" class="cows-filter-tab ${activeTabFilter === "mine" ? "active" : ""}" data-tab="mine">
+              Mías <span class="cows-tab-count">${myCows.length}</span>
             </button>
-            <button type="button" class="cows-filter-tab ${activeTabFilter === 'others' ? 'active' : ''}" data-tab="others">
-              <span>Otras Vacas</span>
-              <span class="cows-tab-count">${otherCows.length}</span>
+            <button type="button" class="cows-filter-tab ${activeTabFilter === "others" ? "active" : ""}" data-tab="others">
+              Invitado <span class="cows-tab-count">${otherCows.length}</span>
             </button>
           </div>
 
-          <!-- Input de Búsqueda -->
-          <div style="position:relative;width:100%;max-width:300px;">
-            <div style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#94A3B8;pointer-events:none;">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            </div>
-            <input type="text" id="cowSearchInput" class="bank-input" placeholder="Buscar por nombre..." value="${searchQuery}" style="padding-left:36px;font-size:13px;" />
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <input type="search" id="cowSearchInput" class="bank-input search-input" placeholder="Buscar" aria-label="Buscar vacas por nombre" value="${searchQuery}" />
+            <button type="button" id="btnOpenCreateCow" class="bank-btn bank-btn-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Nueva vaca
+            </button>
           </div>
         </div>
 
-        <!-- Contenedor Principal de Secciones de Vacas -->
-        <div style="display:flex;flex-direction:column;gap:36px;">
-
-          <!-- SECCIÓN 1: MIS VACAS (Creadas por mí) -->
-          ${
-            activeTabFilter === "all" || activeTabFilter === "mine"
-              ? `
-              <div id="sectionMyCows">
-                <div class="cows-section-header">
-                  <div>
-                    <h2 class="cows-section-title">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#173B63" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                      </svg>
-                      Mis Vacas (Iniciativas Propias)
-                      <span class="badge badge-navy" style="font-size:11px;">${filteredMyCows.length}</span>
-                    </h2>
-                    <p class="cows-section-subtitle">
-                      Fondos creados por ti. Administras la meta, los invitados y tienes autorización exclusiva de desembolso.
-                    </p>
-                  </div>
-                </div>
-
-                ${
-                  filteredMyCows.length === 0
-                    ? `
-                    <div class="bank-empty-state">
-                      <svg class="bank-empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/>
-                      </svg>
-                      <div style="font-weight:600;font-size:15px;color:#0F172A;margin-bottom:4px;">No has creado ninguna vaca todavía</div>
-                      <div style="font-size:13px;color:#64748B;max-width:380px;margin:0 auto 16px auto;">Crea una iniciativa para viajes, regalos o compras colectivas con tus contactos registrados.</div>
-                      <button type="button" class="bank-btn bank-btn-primary btnTriggerCreateCow" style="font-size:13px;">
-                        + Crear mi primera vaca
-                      </button>
-                    </div>
-                  `
-                    : `
-                    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(350px, 1fr));gap:20px;">
-                      ${filteredMyCows.map((cow) => renderCowCard(cow, active, true)).join("")}
-                    </div>
-                  `
-                }
+        ${
+          showMine
+            ? `
+            <section>
+              <div class="cows-section-header">
+                <h2 class="cows-section-title">Mis vacas</h2>
               </div>
-            `
-              : ""
-          }
+              ${
+                filteredMyCows.length === 0
+                  ? `<div class="bank-empty-state">
+                      <div class="muted" style="margin-bottom:14px;">Aún no has creado ninguna vaca.</div>
+                      <button type="button" class="bank-btn bank-btn-secondary bank-btn-sm btnTriggerCreateCow">Crear vaca</button>
+                    </div>`
+                  : cardGrid(filteredMyCows, true)
+              }
+            </section>
+          `
+            : ""
+        }
 
-          <!-- SECCIÓN 2: OTRAS VACAS (En las que participo) -->
-          ${
-            activeTabFilter === "all" || activeTabFilter === "others"
-              ? `
-              <div id="sectionOtherCows">
-                <div class="cows-section-header">
-                  <div>
-                    <h2 class="cows-section-title">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                      </svg>
-                      Otras Vacas (Fondos en los que Participas)
-                      <span class="badge badge-info" style="font-size:11px;">${filteredOtherCows.length}</span>
-                    </h2>
-                    <p class="cows-section-subtitle">
-                      Iniciativas organizadas por tus contactos donde has sido invitado para colaborar y aportar fondos.
-                    </p>
-                  </div>
-                </div>
-
-                ${
-                  filteredOtherCows.length === 0
-                    ? `
-                    <div class="bank-empty-state">
-                      <svg class="bank-empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-                      </svg>
-                      <div style="font-weight:600;font-size:15px;color:#0F172A;margin-bottom:4px;">No participas en vacas de otros usuarios</div>
-                      <div style="font-size:13px;color:#64748B;">Cuando otro usuario te invite a su vaca, aparecerá listada en esta sección.</div>
-                    </div>
-                  `
-                    : `
-                    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(350px, 1fr));gap:20px;">
-                      ${filteredOtherCows.map((cow) => renderCowCard(cow, active, false)).join("")}
-                    </div>
-                  `
-                }
+        ${
+          showOthers
+            ? `
+            <section>
+              <div class="cows-section-header">
+                <h2 class="cows-section-title">Donde participo</h2>
               </div>
-            `
-              : ""
-          }
-
-        </div>
+              ${
+                filteredOtherCows.length === 0
+                  ? `<div class="bank-empty-state"><div class="muted">Cuando alguien te invite, su vaca aparecerá aquí.</div></div>`
+                  : cardGrid(filteredOtherCows, false)
+              }
+            </section>
+          `
+            : ""
+        }
 
         <!-- Contenedor dinámico de Modales -->
         <div id="cowModalRoot"></div>
@@ -353,123 +244,63 @@ export function initCows(containerId) {
     const creatorMember = (cow.members || []).find((m) => m.role === "CREATOR");
     const creatorName = creatorMember ? creatorMember.full_name : "Organizador";
 
+    // Solo se muestra un estado cuando NO es el habitual (activa), para no repetir
+    // una insignia idéntica en cada tarjeta.
+    const statusBadge = isDisbursed
+      ? `<span class="badge badge-navy">Desembolsada</span>`
+      : isCompleted
+      ? `<span class="badge badge-success">Meta lograda</span>`
+      : isCancelled
+      ? `<span class="badge badge-danger">Cancelada</span>`
+      : "";
+
+    const memberCount = (cow.members || []).length;
+
     return `
-      <div class="cow-card ${isMine ? 'cow-card-mine' : 'cow-card-other'}">
+      <article class="cow-card">
         <div>
-          <!-- Insignias Superiores -->
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;">
+            <h3 style="font-size:16px;font-weight:700;color:#0F172A;margin:0;">${cow.title}</h3>
+            ${statusBadge}
+          </div>
+          <div class="muted" style="display:flex;align-items:center;gap:6px;margin-bottom:18px;">
             ${
               isAnonymous
-                ? `<span class="badge badge-warning" title="Aportes individuales confidenciales (Zero-Trust)">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    Anónima (Zero-Trust)
-                  </span>`
-                : `<span class="badge badge-info" title="Aportes visibles para todos">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg>
-                    Pública
-                  </span>`
+                ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Anónima`
+                : "Pública"
             }
-
-            <div style="display:flex;align-items:center;gap:6px;">
-              ${
-                isMine
-                  ? `<span class="badge badge-navy" style="font-size:11px;">Eres Creador</span>`
-                  : `<span class="badge badge-neutral" style="font-size:11px;">Por ${creatorName.split(" ")[0]}</span>`
-              }
-              ${
-                isDisbursed
-                  ? `<span class="badge badge-navy">Desembolsada</span>`
-                  : isCompleted
-                  ? `<span class="badge badge-success">Meta Alcanzada</span>`
-                  : isCancelled
-                  ? `<span class="badge badge-danger">Cancelada</span>`
-                  : `<span class="badge badge-success" style="background:#EBF8F2;color:#0E744A;">Activa</span>`
-              }
-            </div>
+            · ${isMine ? "Creada por ti" : `De ${creatorName.split(" ")[0]}`}
           </div>
 
-          <!-- Título y Descripción -->
-          <h3 style="font-size:17px;font-weight:700;color:#0F172A;margin:0 0 6px 0;letter-spacing:-0.2px;">
-            ${cow.title}
-          </h3>
-          <p style="font-size:13px;color:#64748B;margin:0 0 16px 0;line-height:1.45;min-height:36px;">
-            ${cow.description || "Iniciativa colaborativa de ahorro grupal."}
-          </p>
-
-          <!-- Montos y Progreso -->
-          <div style="background:#F8FAFD;border:1px solid #E2E8F0;border-radius:12px;padding:14px;margin-bottom:16px;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:10px;">
-              <div>
-                <span style="font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:0.5px;">Recaudado</span>
-                <div class="tabular-nums" style="font-size:22px;font-weight:700;color:#0F172A;">
-                  ${formatCOP(cow.collected_amount)}
-                </div>
-              </div>
-              <div style="text-align:right;">
-                <span style="font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:0.5px;">Meta</span>
-                <div class="tabular-nums" style="font-size:14px;font-weight:600;color:#64748B;">
-                  ${formatCOP(cow.target_amount)}
-                </div>
-              </div>
-            </div>
-
-            <!-- Barra de Progreso -->
-            <div class="bank-progress-track">
-              <div class="bank-progress-bar ${progress >= 100 ? 'completed' : ''}" style="width:${progress}%;"></div>
-            </div>
-
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:#64748B;margin-top:8px;">
-              <span><strong>${cow.progress_percentage}%</strong> completado</span>
-              <span>${remaining > 0 ? `Faltan ${formatCOP(remaining)}` : "¡Meta lograda!"}</span>
-            </div>
+          <div class="kv" style="margin-bottom:8px;">
+            <span class="tabular-nums" style="font-size:20px;font-weight:700;color:#0F172A;">${formatCOP(cow.collected_amount)}</span>
+            <span class="muted tabular-nums">de ${formatCOP(cow.target_amount)}</span>
           </div>
-
-          <!-- Aporte personal del usuario activo -->
-          ${
-            cow.my_contribution > 0
-              ? `
-              <div style="background:#EAF6EF;border:1px solid #B7E4CF;border-radius:8px;padding:9px 12px;margin-bottom:16px;font-size:12px;display:flex;justify-content:space-between;align-items:center;">
-                <span style="color:#0E744A;font-weight:500;">Tu aporte personal:</span>
-                <strong class="tabular-nums" style="color:#0E744A;font-size:13px;font-weight:700;">${formatCOP(cow.my_contribution)}</strong>
-              </div>
-            `
-              : ""
-          }
-
-          <!-- Contador de Participantes -->
-          <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#64748B;margin-bottom:14px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            <span>${(cow.members || []).length} participante(s) vinculados</span>
+          <div class="bank-progress-track" role="progressbar" aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100">
+            <div class="bank-progress-bar ${progress >= 100 ? "completed" : ""}" style="width:${progress}%;"></div>
+          </div>
+          <div class="muted tabular-nums" style="margin-top:8px;">
+            ${remaining > 0 ? `Faltan ${formatCOP(remaining)}` : "Meta lograda"}
+            ${cow.my_contribution > 0 ? ` · Tu aporte ${formatCOP(cow.my_contribution)}` : ""}
           </div>
         </div>
 
-        <!-- Acciones Inferiores de la Tarjeta -->
-        <div style="display:flex;gap:8px;padding-top:14px;border-top:1px solid #E2E8F0;flex-wrap:wrap;">
-          <button type="button" class="bank-btn bank-btn-secondary btnViewMembers" data-id="${cow.id}" style="flex:1;font-size:13px;padding:8px 12px;">
-            Participantes
+        <div style="display:flex;gap:8px;margin-top:20px;">
+          <button type="button" class="bank-btn bank-btn-secondary bank-btn-sm btnViewMembers" data-id="${cow.id}" style="flex:1;">
+            Participantes (${memberCount})
           </button>
-          
           ${
             canContribute
-              ? `
-              <button type="button" class="bank-btn bank-btn-primary btnOpenContribute" data-id="${cow.id}" style="flex:1;font-size:13px;padding:8px 12px;">
-                Aportar
-              </button>
-            `
+              ? `<button type="button" class="bank-btn bank-btn-primary bank-btn-sm btnOpenContribute" data-id="${cow.id}" style="flex:1;">Aportar</button>`
               : ""
           }
-
           ${
             canDisburse
-              ? `
-              <button type="button" class="bank-btn bank-btn-success btnOpenDisburse" data-id="${cow.id}" style="flex:1;font-size:13px;padding:8px 12px;background:#0E744A;">
-                Desembolsar
-              </button>
-            `
+              ? `<button type="button" class="bank-btn bank-btn-success bank-btn-sm btnOpenDisburse" data-id="${cow.id}" style="flex:1;">Desembolsar</button>`
               : ""
           }
         </div>
-      </div>
+      </article>
     `;
   }
 
@@ -487,7 +318,7 @@ export function initCows(containerId) {
   }
 
   /**
-   * Modal 1: Creación Avanzada de Vaca con Selección Visual y Vista Previa en Vivo.
+   * Modal 1: Creación de Vaca (nombre, meta, privacidad e invitados).
    */
   function openCreateModal() {
     const root = getModalRoot();
@@ -498,144 +329,90 @@ export function initCows(containerId) {
 
     root.innerHTML = `
       <div class="bank-modal-overlay">
-        <div class="bank-modal-content bank-modal-content-lg">
+        <div class="bank-modal-content">
           
-          <!-- Encabezado del Modal -->
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid #E2E8F0;">
-            <div>
-              <div style="display:flex;align-items:center;gap:10px;">
-                <div style="width:36px;height:36px;border-radius:10px;background:#EAF2FA;color:#173B63;display:flex;align-items:center;justify-content:center;">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                </div>
-                <div>
-                  <h3 style="font-size:18px;font-weight:700;margin:0;color:#0F172A;">Nueva Vaca Colaborativa</h3>
-                  <span style="font-size:12px;color:#64748B;">Configura la bóveda financiera, meta y nivel de privacidad</span>
-                </div>
-              </div>
-            </div>
-            <button type="button" class="btnModalClose" style="background:none;border:none;cursor:pointer;color:#94A3B8;padding:4px;border-radius:4px;">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <div class="modal-head">
+            <h3 class="modal-title">Nueva vaca</h3>
+            <button type="button" class="btn-icon btnModalClose" aria-label="Cerrar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
 
-          <form id="createCowForm" style="display:flex;flex-direction:column;gap:18px;">
-            
-            <!-- 1. Datos Básicos -->
-            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(250px, 1fr));gap:14px;">
-              <div>
-                <label class="bank-label" for="cowTitle">Nombre de la Vaca: *</label>
-                <input id="cowTitle" class="bank-input" type="text" placeholder="Ej. Viaje a Cartagena, Asado Fin de Año" required maxlength="120" />
-              </div>
-
-              <div>
-                <label class="bank-label" for="cowTargetAmount">Meta de recaudación (COP): *</label>
-                <input id="cowTargetAmount" class="bank-input tabular-nums" type="number" min="1" step="any" placeholder="Ej. 500000" required />
-              </div>
+          <form id="createCowForm" class="stack-md">
+            <div>
+              <label class="bank-label" for="cowTitle">Nombre</label>
+              <input id="cowTitle" class="bank-input" type="text" placeholder="Ej. Viaje a Cartagena" required maxlength="120" />
             </div>
 
-            <!-- Chips de atajo rápido para montos de meta -->
             <div>
-              <span style="font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;margin-bottom:6px;display:block;">Atajos rápidos de meta:</span>
-              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <label class="bank-label" for="cowTargetAmount">Meta (COP)</label>
+              <input id="cowTargetAmount" class="bank-input tabular-nums" type="number" min="1" step="any" placeholder="0" required />
+              <div class="chips" style="margin-top:8px;">
                 <button type="button" class="bank-btn-chip btnPresetTarget" data-val="100000">$100.000</button>
-                <button type="button" class="bank-btn-chip btnPresetTarget" data-val="250000">$250.000</button>
                 <button type="button" class="bank-btn-chip btnPresetTarget" data-val="500000">$500.000</button>
                 <button type="button" class="bank-btn-chip btnPresetTarget" data-val="1000000">$1.000.000</button>
-                <button type="button" class="bank-btn-chip btnPresetTarget" data-val="2500000">$2.500.000</button>
               </div>
             </div>
 
             <div>
-              <label class="bank-label" for="cowDescription">Propósito o descripción (opcional):</label>
-              <textarea id="cowDescription" class="bank-textarea" rows="2" placeholder="Explica el objetivo de esta iniciativa para los miembros invitados." maxlength="255"></textarea>
+              <label class="bank-label" for="cowDescription">Descripción (opcional)</label>
+              <textarea id="cowDescription" class="bank-textarea" rows="2" maxlength="255"></textarea>
             </div>
 
-            <!-- 2. Selector Interactivo de Privacidad (Radio Cards) -->
+            <!-- Privacidad: dos opciones con una sola línea explicativa cada una -->
             <div>
-              <label class="bank-label">Modalidad de Privacidad de la Bóveda: *</label>
-              <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:12px;margin-top:6px;">
-                
-                <!-- Opción Pública -->
-                <div class="privacy-option-card selected" id="optPrivacyPublic" data-val="PUBLIC">
+              <span class="bank-label">Privacidad</span>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:10px;">
+                <div class="privacy-option-card selected" id="optPrivacyPublic" data-val="PUBLIC" role="radio" aria-checked="true" tabindex="0">
                   <div class="privacy-radio-circle"></div>
                   <div>
-                    <div style="display:flex;align-items:center;gap:6px;font-weight:700;font-size:14px;color:#0F172A;">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#173B63" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg>
-                      Iniciativa Pública
-                    </div>
-                    <div style="font-size:12px;color:#64748B;margin-top:3px;line-height:1.4;">
-                      Todos los participantes pueden ver los aportes y montos individuales de cada miembro.
-                    </div>
+                    <div style="font-weight:600;font-size:14px;color:#0F172A;">Pública</div>
+                    <div class="muted" style="font-size:12px;">Todos ven los aportes.</div>
                   </div>
                 </div>
-
-                <!-- Opción Anónima (Zero-Trust) -->
-                <div class="privacy-option-card" id="optPrivacyAnonymous" data-val="ANONYMOUS">
+                <div class="privacy-option-card" id="optPrivacyAnonymous" data-val="ANONYMOUS" role="radio" aria-checked="false" tabindex="0">
                   <div class="privacy-radio-circle"></div>
                   <div>
-                    <div style="display:flex;align-items:center;gap:6px;font-weight:700;font-size:14px;color:#0F172A;">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B45309" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                      Anónima (Zero-Trust)
-                    </div>
-                    <div style="font-size:12px;color:#64748B;margin-top:3px;line-height:1.4;">
-                      Aportes 100% confidenciales. Ningún miembro ve los montos de otros; solo el total en bóveda.
-                    </div>
+                    <div style="font-weight:600;font-size:14px;color:#0F172A;">Anónima</div>
+                    <div class="muted" style="font-size:12px;">Cada quien ve solo su aporte.</div>
                   </div>
                 </div>
-
               </div>
             </div>
 
-            <!-- 3. Selector de Participantes Invitados -->
             <div>
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                <label class="bank-label" style="margin:0;">Invitar participantes:</label>
-                <div style="display:flex;gap:8px;">
-                  <button type="button" id="btnSelectAllContacts" style="background:none;border:none;color:#173B63;font-size:12px;font-weight:600;cursor:pointer;padding:0;">
-                    Seleccionar todos
-                  </button>
-                  <span style="color:#CBD5E1;">•</span>
-                  <button type="button" id="btnUnselectAllContacts" style="background:none;border:none;color:#64748B;font-size:12px;font-weight:500;cursor:pointer;padding:0;">
-                    Deseleccionar
-                  </button>
+              <div class="kv" style="margin-bottom:6px;">
+                <span class="bank-label" style="margin:0;">Invitar</span>
+                <div style="display:flex;gap:12px;">
+                  <button type="button" id="btnSelectAllContacts" class="btn-link">Todos</button>
+                  <button type="button" id="btnUnselectAllContacts" class="btn-link" style="color:#64748B;">Ninguno</button>
                 </div>
               </div>
-
-              <div style="display:flex;flex-direction:column;gap:8px;max-height:150px;overflow-y:auto;padding:8px;border:1px solid #E2E8F0;border-radius:10px;background:#F8FAFD;">
+              <div style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;">
                 ${
                   availableContacts.length === 0
-                    ? `<span style="font-size:12px;color:#64748B;padding:8px;">No hay otros usuarios registrados para invitar. Puedes registrar personas desde la cabecera.</span>`
+                    ? `<span class="muted">No hay otras personas registradas.</span>`
                     : availableContacts
                         .map(
                           (c) => `
                           <label class="contact-invite-row checked">
-                            <div style="display:flex;align-items:center;gap:10px;">
+                            <span style="display:flex;align-items:center;gap:10px;">
                               <input type="checkbox" class="cowInviteCheckbox" value="${c.id}" checked style="width:16px;height:16px;accent-color:#173B63;cursor:pointer;" />
-                              <div style="width:26px;height:26px;border-radius:50%;background:#173B63;color:#FFFFFF;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">
-                                ${c.initials || "US"}
-                              </div>
-                              <div>
-                                <span style="font-size:13px;font-weight:600;color:#0F172A;">${c.name}</span>
-                                <span style="font-size:11px;color:#64748B;font-family:monospace;margin-left:6px;">${c.phone}</span>
-                              </div>
-                            </div>
-                            <span class="badge badge-navy" style="font-size:11px;padding:2px 6px;">${c.role || "Usuario"}</span>
+                              <span style="font-size:14px;font-weight:600;color:#0F172A;">${c.name}</span>
+                            </span>
+                            <span class="muted tabular-nums" style="font-size:12px;">${c.phone}</span>
                           </label>
                         `
                         )
                         .join("")
                 }
               </div>
-              <span style="font-size:11px;color:#64748B;margin-top:4px;display:block;">
-                Aislamiento estricto: Solo tú y las personas que marques podrán ver y participar en esta vaca.
-              </span>
             </div>
 
-            <!-- Botones de Acción -->
-            <div style="display:flex;gap:10px;margin-top:10px;padding-top:14px;border-top:1px solid #E2E8F0;justify-content:flex-end;">
+            <div class="modal-actions">
               <button type="button" class="bank-btn bank-btn-secondary btnModalClose">Cancelar</button>
               <button type="submit" id="btnSubmitCreateCow" class="bank-btn bank-btn-primary" ${isSubmitting ? "disabled" : ""}>
-                ${isSubmitting ? `<span class="bank-spinner"></span> Creando Bóveda...` : `Crear Vaca (Bóveda Segura)`}
+                ${isSubmitting ? `<span class="bank-spinner"></span> Creando…` : "Crear vaca"}
               </button>
             </div>
 
@@ -661,17 +438,24 @@ export function initCows(containerId) {
 
     function setPrivacy(type) {
       selectedVisibility = type;
-      if (type === "PUBLIC") {
-        optPublic.classList.add("selected");
-        optAnonymous.classList.remove("selected");
-      } else {
-        optAnonymous.classList.add("selected");
-        optPublic.classList.remove("selected");
-      }
+      optPublic.classList.toggle("selected", type === "PUBLIC");
+      optAnonymous.classList.toggle("selected", type === "ANONYMOUS");
+      optPublic.setAttribute("aria-checked", String(type === "PUBLIC"));
+      optAnonymous.setAttribute("aria-checked", String(type === "ANONYMOUS"));
     }
 
-    if (optPublic) optPublic.addEventListener("click", () => setPrivacy("PUBLIC"));
-    if (optAnonymous) optAnonymous.addEventListener("click", () => setPrivacy("ANONYMOUS"));
+    // Clic o Enter/Espacio seleccionan la opción (accesible por teclado).
+    [optPublic, optAnonymous].forEach((opt) => {
+      if (!opt) return;
+      const select = () => setPrivacy(opt.getAttribute("data-val"));
+      opt.addEventListener("click", select);
+      opt.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          select();
+        }
+      });
+    });
 
     // Seleccionar / Deseleccionar todos los contactos
     const btnSelectAll = root.querySelector("#btnSelectAllContacts");
@@ -755,45 +539,31 @@ export function initCows(containerId) {
     root.innerHTML = `
       <div class="bank-modal-overlay">
         <div class="bank-modal-content">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
-            <div>
-              <h3 style="font-size:18px;font-weight:700;margin:0;color:#0F172A;">Aportar a "${cow.title}"</h3>
-              <span style="font-size:12px;color:#64748B;">Transferencia atómica a la cuenta custodia de la vaca</span>
-            </div>
-            <button type="button" class="btnModalClose" style="background:none;border:none;cursor:pointer;color:#94A3B8;padding:4px;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <div class="modal-head">
+            <h3 class="modal-title">Aportar a ${cow.title}</h3>
+            <button type="button" class="btn-icon btnModalClose" aria-label="Cerrar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
 
-          <div style="background:#F8FAFD;border:1px solid #E2E8F0;border-radius:12px;padding:14px;margin-bottom:16px;">
-            <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
-              <span style="color:#64748B;">Tu saldo disponible:</span>
-              <strong class="tabular-nums" style="color:#0F172A;">${formatCOP(balance)}</strong>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:13px;">
-              <span style="color:#64748B;">Faltante para la meta:</span>
-              <span class="tabular-nums font-semibold" style="color:#173B63;">${formatCOP(remaining)}</span>
-            </div>
+          <div style="margin-bottom:20px;">
+            <div class="kv"><span class="muted">Tu saldo</span><strong class="tabular-nums">${formatCOP(balance)}</strong></div>
+            <div class="kv"><span class="muted">Falta para la meta</span><strong class="tabular-nums">${formatCOP(remaining)}</strong></div>
           </div>
 
-          <form id="contributeForm" style="display:flex;flex-direction:column;gap:14px;">
-            <div>
-              <label class="bank-label" for="contribAmount">Monto a aportar (COP): *</label>
-              <input id="contribAmount" class="bank-input tabular-nums" type="number" min="1" step="any" placeholder="Ej. 25000" required />
-              
-              <!-- Chips sugeridos -->
-              <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
-                <button type="button" class="bank-btn-chip btnPresetContrib" data-val="10000">+$10.000</button>
-                <button type="button" class="bank-btn-chip btnPresetContrib" data-val="20000">+$20.000</button>
-                <button type="button" class="bank-btn-chip btnPresetContrib" data-val="50000">+$50.000</button>
-                ${remaining > 0 ? `<button type="button" class="bank-btn-chip btnPresetContrib" data-val="${remaining}">Completar Meta</button>` : ""}
-              </div>
+          <form id="contributeForm">
+            <label class="bank-label" for="contribAmount">Monto</label>
+            <input id="contribAmount" class="bank-input tabular-nums" type="number" min="1" step="any" placeholder="0" required />
+            <div class="chips" style="margin-top:8px;">
+              <button type="button" class="bank-btn-chip btnPresetContrib" data-val="10000">$10.000</button>
+              <button type="button" class="bank-btn-chip btnPresetContrib" data-val="50000">$50.000</button>
+              ${remaining > 0 ? `<button type="button" class="bank-btn-chip btnPresetContrib" data-val="${remaining}">Completar meta</button>` : ""}
             </div>
 
-            <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;">
+            <div class="modal-actions">
               <button type="button" class="bank-btn bank-btn-secondary btnModalClose">Cancelar</button>
               <button type="submit" id="btnSubmitContrib" class="bank-btn bank-btn-primary" ${isSubmitting ? "disabled" : ""}>
-                ${isSubmitting ? `<span class="bank-spinner"></span> Procesando...` : `Confirmar Aporte`}
+                ${isSubmitting ? `<span class="bank-spinner"></span> Procesando…` : "Aportar"}
               </button>
             </div>
           </form>
@@ -855,33 +625,20 @@ export function initCows(containerId) {
     root.innerHTML = `
       <div class="bank-modal-overlay">
         <div class="bank-modal-content">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
-            <div>
-              <h3 style="font-size:18px;font-weight:700;margin:0;color:#0F172A;">Liquidación y Desembolso</h3>
-              <span style="font-size:12px;color:#64748B;">Transferencia del 100% de la bóveda a tu cuenta</span>
-            </div>
-            <button type="button" class="btnModalClose" style="background:none;border:none;cursor:pointer;color:#94A3B8;padding:4px;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <div class="modal-head">
+            <h3 class="modal-title">Desembolsar ${cow.title}</h3>
+            <button type="button" class="btn-icon btnModalClose" aria-label="Cerrar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
 
-          <div style="padding:18px;background:#EAF6EF;border:1px solid #B7E4CF;border-radius:12px;margin-bottom:16px;text-align:center;">
-            <div style="font-size:13px;color:#0E744A;font-weight:600;margin-bottom:4px;">
-              Monto total recaudado a transferir:
-            </div>
-            <div class="tabular-nums" style="font-size:32px;font-weight:700;color:#0E744A;">
-              ${formatCOP(cow.collected_amount)}
-            </div>
-          </div>
+          <p class="muted" style="margin:0 0 4px;">Se transferirá a tu cuenta</p>
+          <div class="tabular-nums" style="font-size:32px;font-weight:700;color:#0F172A;">${formatCOP(cow.collected_amount)}</div>
 
-          <p style="font-size:13px;color:#64748B;line-height:1.5;margin:0 0 18px 0;">
-            Al confirmar, los fondos acumulados en la bóveda de <strong>"${cow.title}"</strong> se liquidarán atómicamente a tu cuenta corriente personal. El estado pasará a <strong>DESEMBOLSADA</strong>.
-          </p>
-
-          <div style="display:flex;gap:10px;justify-content:flex-end;">
+          <div class="modal-actions">
             <button type="button" class="bank-btn bank-btn-secondary btnModalClose">Cancelar</button>
-            <button type="button" id="btnConfirmDisburse" class="bank-btn bank-btn-success" style="background:#0E744A;" ${isSubmitting ? "disabled" : ""}>
-              ${isSubmitting ? `<span class="bank-spinner"></span> Desembolsando...` : `Confirmar y Desembolsar`}
+            <button type="button" id="btnConfirmDisburse" class="bank-btn bank-btn-success" ${isSubmitting ? "disabled" : ""}>
+              ${isSubmitting ? `<span class="bank-spinner"></span> Desembolsando…` : "Desembolsar"}
             </button>
           </div>
         </div>
@@ -923,76 +680,48 @@ export function initCows(containerId) {
     root.innerHTML = `
       <div class="bank-modal-overlay">
         <div class="bank-modal-content" style="max-width:540px;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+          <div class="modal-head">
             <div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                <h3 style="font-size:18px;font-weight:700;margin:0;color:#0F172A;">Participantes de "${cow.title}"</h3>
-                ${
-                  isAnonymous
-                    ? `<span class="badge badge-warning" style="font-size:11px;">Privada / Anónima</span>`
-                    : `<span class="badge badge-info" style="font-size:11px;">Pública</span>`
-                }
-              </div>
-              <span style="font-size:12px;color:#64748B;">
-                ${
-                  isAnonymous
-                    ? `Regla Zero-Trust: Cada miembro solo ve su propio aporte. Los de terceros se enmascaran en el servidor.`
-                    : `Regla Pública: Todos los miembros autorizados pueden ver los montos aportados.`
-                }
-              </span>
+              <h3 class="modal-title">Participantes</h3>
+              <span class="muted">${cow.title} · ${isAnonymous ? "Anónima: solo ves tu aporte" : "Pública"}</span>
             </div>
-            <button type="button" class="btnModalClose" style="background:none;border:none;cursor:pointer;color:#94A3B8;padding:4px;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <button type="button" class="btn-icon btnModalClose" aria-label="Cerrar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
 
-          <!-- Lista de Miembros con Aportes Autorizados -->
-          <div style="border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;margin-bottom:16px;">
+          <div class="row-list">
             ${
               members.length === 0
-                ? `<div style="padding:24px;text-align:center;color:#64748B;font-size:13px;">No hay miembros registrados.</div>`
+                ? `<div class="row-item muted">Sin participantes.</div>`
                 : members
-                    .map((m, idx) => {
+                    .map((m) => {
                       const isMe = m.user_id === active.id;
                       const hasAmount = m.amount_contributed !== null && m.amount_contributed !== undefined;
-
                       return `
-                      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:${idx === members.length - 1 ? "none" : "1px solid #EDF2F7"};background:${isMe ? "#F8FAFD" : "#FFFFFF"};">
-                        <div style="display:flex;align-items:center;gap:10px;">
-                          <div style="width:30px;height:30px;border-radius:50%;background:${isMe ? '#173B63' : '#EDF2F7'};color:${isMe ? '#FFFFFF' : '#475569'};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">
-                            ${(m.full_name || "US").slice(0, 2).toUpperCase()}
-                          </div>
-                          <div>
-                            <div style="display:flex;align-items:center;gap:6px;">
-                              <strong style="font-size:13px;color:#0F172A;">${m.full_name}</strong>
-                              ${isMe ? `<span class="badge badge-navy" style="font-size:11px;padding:2px 6px;">Tú</span>` : ""}
-                              ${m.role === "CREATOR" ? `<span class="badge badge-info" style="font-size:11px;padding:2px 6px;">Creador</span>` : ""}
-                            </div>
-                            <span style="font-size:11px;color:#64748B;">Vinculado: ${formatDate(m.joined_at)}</span>
-                          </div>
-                        </div>
-
-                        <div style="text-align:right;">
-                          ${
-                            hasAmount
-                              ? `<span class="tabular-nums" style="font-size:14px;font-weight:700;color:#0E744A;">${formatCOP(m.amount_contributed)}</span>`
-                              : `<span class="badge badge-warning" style="font-size:11px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Aporte Protegido</span>`
-                          }
-                        </div>
+                      <div class="row-item">
+                        <span style="display:flex;align-items:center;gap:10px;">
+                          <span class="avatar ${isMe ? "avatar-active" : ""}">${(m.full_name || "US").slice(0, 2).toUpperCase()}</span>
+                          <span>
+                            <strong style="font-weight:600;">${m.full_name}</strong>
+                            <span class="muted">${[isMe ? "Tú" : "", m.role === "CREATOR" ? "Creador" : ""].filter(Boolean).join(" · ")}</span>
+                          </span>
+                        </span>
+                        ${
+                          hasAmount
+                            ? `<strong class="tabular-nums">${formatCOP(m.amount_contributed)}</strong>`
+                            : `<span class="muted" title="Aporte oculto por privacidad">Oculto</span>`
+                        }
                       </div>
                     `;
                     })
-                    .join("")}
+                    .join("")
+            }
           </div>
 
-          <!-- Total Consistente -->
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:#F8FAFD;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:16px;">
-            <span style="font-size:13px;font-weight:600;color:#475569;">Total Acumulado en Bóveda:</span>
-            <strong class="tabular-nums" style="font-size:16px;color:#0F172A;font-weight:700;">${formatCOP(cow.collected_amount)}</strong>
-          </div>
-
-          <div style="display:flex;justify-content:flex-end;">
-            <button type="button" class="bank-btn bank-btn-secondary btnModalClose">Cerrar</button>
+          <div class="kv" style="margin-top:16px;padding:0 4px;">
+            <span class="muted">Total</span>
+            <strong class="tabular-nums" style="font-size:16px;">${formatCOP(cow.collected_amount)}</strong>
           </div>
         </div>
       </div>
