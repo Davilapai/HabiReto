@@ -6,7 +6,7 @@
  * liquidación por desembolso a la cuenta del creador y consulta de miembros con reglas Zero-Trust.
  */
 
-import { api, formatCOP } from "../api.js";
+import { api, formatCOP, formatDate } from "../api.js";
 import { store } from "../state.js";
 import { showToast } from "./toast.js";
 
@@ -242,7 +242,7 @@ export function initCows(containerId) {
 
     // Resolver nombre del creador si no es propia
     const creatorMember = (cow.members || []).find((m) => m.role === "CREATOR");
-    const creatorName = creatorMember ? creatorMember.full_name : "Organizador";
+    const creatorName = cow.creator_name || (creatorMember ? creatorMember.full_name : "Organizador");
 
     // Solo se muestra un estado cuando NO es el habitual (activa), para no repetir
     // una insignia idéntica en cada tarjeta.
@@ -255,6 +255,17 @@ export function initCows(containerId) {
       : "";
 
     const memberCount = (cow.members || []).length;
+    const contributions = cow.contributions || [];
+    const latestContribution = contributions[0] || null;
+
+    // Etiqueta del botón de detalle según el caso (Vaca Pública vs Privada y Creador vs Invitado)
+    const detailBtnLabel = isAnonymous
+      ? isMine
+        ? `Invitados (${memberCount})`
+        : `Aportes (${contributions.length})`
+      : isMine
+      ? `Invitados (${memberCount})`
+      : `Aportes (${memberCount})`;
 
     return `
       <article class="cow-card">
@@ -266,7 +277,7 @@ export function initCows(containerId) {
           <div class="muted" style="display:flex;align-items:center;gap:6px;margin-bottom:18px;">
             ${
               isAnonymous
-                ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Anónima`
+                ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Privada`
                 : "Pública"
             }
             · ${isMine ? "Creada por ti" : `De ${creatorName.split(" ")[0]}`}
@@ -283,11 +294,20 @@ export function initCows(containerId) {
             ${remaining > 0 ? `Faltan ${formatCOP(remaining)}` : "Meta lograda"}
             ${cow.my_contribution > 0 ? ` · Tu aporte ${formatCOP(cow.my_contribution)}` : ""}
           </div>
+          ${
+            isAnonymous && latestContribution
+              ? `<div class="tabular-nums" style="margin-top:10px;padding:8px 10px;border-radius:8px;background:var(--color-surface-subtle);border:1px solid var(--color-border-subtle);font-size:13px;color:var(--color-text-primary);">
+                  <span class="amount-credit" style="font-weight:700;">+</span>
+                  Alguien ha aportado <strong>${formatCOP(latestContribution.amount)}</strong>
+                  ${contributions.length > 1 ? `<span class="muted"> (+${contributions.length - 1} más)</span>` : ""}
+                </div>`
+              : ""
+          }
         </div>
 
         <div style="display:flex;gap:8px;margin-top:20px;">
           <button type="button" class="bank-btn bank-btn-secondary bank-btn-sm btnViewMembers" data-id="${cow.id}" style="flex:1;">
-            Participantes (${memberCount})
+            ${detailBtnLabel}
           </button>
           ${
             canContribute
@@ -347,11 +367,6 @@ export function initCows(containerId) {
             <div>
               <label class="bank-label" for="cowTargetAmount">Meta (COP)</label>
               <input id="cowTargetAmount" class="bank-input tabular-nums" type="number" min="1" step="any" placeholder="0" required />
-              <div class="chips" style="margin-top:8px;">
-                <button type="button" class="bank-btn-chip btnPresetTarget" data-val="100000">$100.000</button>
-                <button type="button" class="bank-btn-chip btnPresetTarget" data-val="500000">$500.000</button>
-                <button type="button" class="bank-btn-chip btnPresetTarget" data-val="1000000">$1.000.000</button>
-              </div>
             </div>
 
             <div>
@@ -359,22 +374,22 @@ export function initCows(containerId) {
               <textarea id="cowDescription" class="bank-textarea" rows="2" maxlength="255"></textarea>
             </div>
 
-            <!-- Privacidad: dos opciones con una sola línea explicativa cada una -->
+            <!-- Privacidad: dos casos claramente diferenciados -->
             <div>
-              <span class="bank-label">Privacidad</span>
+              <span class="bank-label">Tipo de vaca</span>
               <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:10px;">
                 <div class="privacy-option-card selected" id="optPrivacyPublic" data-val="PUBLIC" role="radio" aria-checked="true" tabindex="0">
                   <div class="privacy-radio-circle"></div>
                   <div>
                     <div style="font-weight:600;font-size:14px;color:#0F172A;">Pública</div>
-                    <div class="muted" style="font-size:12px;">Todos ven los aportes.</div>
+                    <div class="muted" style="font-size:12px;">Ves todos tus invitados; ellos ven los aportes realizados.</div>
                   </div>
                 </div>
                 <div class="privacy-option-card" id="optPrivacyAnonymous" data-val="ANONYMOUS" role="radio" aria-checked="false" tabindex="0">
                   <div class="privacy-radio-circle"></div>
                   <div>
-                    <div style="font-weight:600;font-size:14px;color:#0F172A;">Anónima</div>
-                    <div class="muted" style="font-size:12px;">Cada quien ve solo su aporte.</div>
+                    <div style="font-weight:600;font-size:14px;color:#0F172A;">Privada</div>
+                    <div class="muted" style="font-size:12px;">Solo tú ves los invitados; los aportes se ven anónimos.</div>
                   </div>
                 </div>
               </div>
@@ -424,13 +439,7 @@ export function initCows(containerId) {
     // Cerrar modal
     root.querySelectorAll(".btnModalClose").forEach((b) => b.addEventListener("click", closeModal));
 
-    // Preset targets
     const inputTarget = root.querySelector("#cowTargetAmount");
-    root.querySelectorAll(".btnPresetTarget").forEach((chip) => {
-      chip.addEventListener("click", () => {
-        inputTarget.value = chip.getAttribute("data-val");
-      });
-    });
 
     // Control de selección de privacidad
     const optPublic = root.querySelector("#optPrivacyPublic");
@@ -554,11 +563,6 @@ export function initCows(containerId) {
           <form id="contributeForm">
             <label class="bank-label" for="contribAmount">Monto</label>
             <input id="contribAmount" class="bank-input tabular-nums" type="number" min="1" step="any" placeholder="0" required />
-            <div class="chips" style="margin-top:8px;">
-              <button type="button" class="bank-btn-chip btnPresetContrib" data-val="10000">$10.000</button>
-              <button type="button" class="bank-btn-chip btnPresetContrib" data-val="50000">$50.000</button>
-              ${remaining > 0 ? `<button type="button" class="bank-btn-chip btnPresetContrib" data-val="${remaining}">Completar meta</button>` : ""}
-            </div>
 
             <div class="modal-actions">
               <button type="button" class="bank-btn bank-btn-secondary btnModalClose">Cancelar</button>
@@ -574,11 +578,6 @@ export function initCows(containerId) {
     root.querySelectorAll(".btnModalClose").forEach((b) => b.addEventListener("click", closeModal));
 
     const inputAmount = root.querySelector("#contribAmount");
-    root.querySelectorAll(".btnPresetContrib").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        inputAmount.value = btn.getAttribute("data-val");
-      });
-    });
 
     const form = root.querySelector("#contributeForm");
     form.addEventListener("submit", async (e) => {
@@ -669,36 +668,59 @@ export function initCows(containerId) {
   }
 
   /**
-   * Modal 4: Visualización de Miembros y Aplicación de Reglas Zero-Trust.
+   * Modal 4: Visualización separada para Vaca Pública vs Vaca Privada.
+   *
+   * - Vaca Pública (PUBLIC):
+   *   - Creador: ve a todas las personas invitadas (incluso en $0) y cuánto ha aportado cada una.
+   *   - Invitado: solo ve los aportes de quienes ya han contribuido (> $0) con nombre y monto.
+   * - Vaca Privada (ANONYMOUS):
+   *   - Creador: ve la lista de personas invitadas (sin montos individuales) + el listado de
+   *     aportes anónimos ("Alguien ha aportado $60.000").
+   *   - Invitado: NO ve quiénes fueron invitados; solo mira cómo se llena la vaca con cada
+   *     mensaje "Alguien ha aportado $60.000".
    */
   function openMembersModal(cow) {
     const root = getModalRoot();
     const active = store.getActiveUser();
     const isAnonymous = cow.visibility_type === "ANONYMOUS";
+    const myMembership = (cow.members || []).find((m) => m.user_id === active.id);
+    const isCreator =
+      (cow.creator_id && cow.creator_id === active.id) ||
+      Boolean(myMembership && myMembership.role === "CREATOR");
+
     const members = cow.members || [];
+    const contributions = cow.contributions || [];
 
-    root.innerHTML = `
-      <div class="bank-modal-overlay">
-        <div class="bank-modal-content" style="max-width:540px;">
-          <div class="modal-head">
-            <div>
-              <h3 class="modal-title">Participantes</h3>
-              <span class="muted">${cow.title} · ${isAnonymous ? "Anónima: solo ves tu aporte" : "Pública"}</span>
-            </div>
-            <button type="button" class="btn-icon btnModalClose" aria-label="Cerrar">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
+    const modalTitle = isAnonymous
+      ? isCreator
+        ? "Invitados y aportes"
+        : "Aportes en la vaca"
+      : isCreator
+      ? "Personas invitadas"
+      : "Aportes realizados";
 
-          <div class="row-list">
-            ${
-              members.length === 0
-                ? `<div class="row-item muted">Sin participantes.</div>`
-                : members
-                    .map((m) => {
-                      const isMe = m.user_id === active.id;
-                      const hasAmount = m.amount_contributed !== null && m.amount_contributed !== undefined;
-                      return `
+    const modalSubtitle = isAnonymous
+      ? isCreator
+        ? `${cow.title} · Privada · Solo tú ves quiénes están invitados`
+        : `${cow.title} · Privada · Los aportes son anónimos`
+      : isCreator
+      ? `${cow.title} · Pública · Ves el aporte de cada invitado`
+      : `${cow.title} · Pública · Aportes de los participantes`;
+
+    let bodyHtml = "";
+
+    if (!isAnonymous) {
+      // CASO 1: VACA PÚBLICA
+      bodyHtml = `
+        <div class="row-list">
+          ${
+            members.length === 0
+              ? `<div class="row-item muted">Aún nadie ha realizado aportes.</div>`
+              : members
+                  .map((m) => {
+                    const isMe = m.user_id === active.id;
+                    const amount = m.amount_contributed || 0;
+                    return `
                       <div class="row-item">
                         <span style="display:flex;align-items:center;gap:10px;">
                           <span class="avatar ${isMe ? "avatar-active" : ""}">${(m.full_name || "US").slice(0, 2).toUpperCase()}</span>
@@ -707,20 +729,92 @@ export function initCows(containerId) {
                             <span class="muted">${[isMe ? "Tú" : "", m.role === "CREATOR" ? "Creador" : ""].filter(Boolean).join(" · ")}</span>
                           </span>
                         </span>
-                        ${
-                          hasAmount
-                            ? `<strong class="tabular-nums">${formatCOP(m.amount_contributed)}</strong>`
-                            : `<span class="muted" title="Aporte oculto por privacidad">Oculto</span>`
-                        }
+                        <strong class="tabular-nums ${amount > 0 ? "amount-credit" : "muted"}">
+                          ${amount > 0 ? formatCOP(amount) : "Sin aporte ($0)"}
+                        </strong>
                       </div>
                     `;
-                    })
+                  })
+                  .join("")
+          }
+        </div>
+      `;
+    } else {
+      // CASO 2: VACA PRIVADA (ANÓNIMA)
+      const contributionsListHtml = `
+        <div>
+          ${isCreator ? `<div class="bank-label" style="margin-bottom:8px;">Cómo se va llenando (${contributions.length})</div>` : ""}
+          <div class="row-list">
+            ${
+              contributions.length === 0
+                ? `<div class="row-item muted">Aún no se han recibido aportes.</div>`
+                : contributions
+                    .map(
+                      (c) => `
+                      <div class="row-item">
+                        <span style="display:flex;align-items:center;gap:10px;">
+                          <span class="avatar" style="background:var(--color-success-bg);color:var(--color-success);">+</span>
+                          <span>
+                            Alguien ha aportado <strong class="tabular-nums">${formatCOP(c.amount)}</strong>
+                          </span>
+                        </span>
+                        <span class="muted tabular-nums" style="font-size:12px;">${formatDate(c.created_at)}</span>
+                      </div>
+                    `
+                    )
                     .join("")
             }
           </div>
+        </div>
+      `;
+
+      const creatorInviteesHtml = isCreator
+        ? `
+          <div>
+            <div class="bank-label" style="margin-bottom:8px;">Personas invitadas (${members.length})</div>
+            <div class="row-list">
+              ${members
+                .map((m) => {
+                  const isMe = m.user_id === active.id;
+                  return `
+                    <div class="row-item">
+                      <span style="display:flex;align-items:center;gap:10px;">
+                        <span class="avatar ${isMe ? "avatar-active" : ""}">${(m.full_name || "US").slice(0, 2).toUpperCase()}</span>
+                        <span>
+                          <strong style="font-weight:600;">${m.full_name}</strong>
+                          <span class="muted">${[isMe ? "Tú" : "", m.role === "CREATOR" ? "Creador" : "Invitado"].filter(Boolean).join(" · ")}</span>
+                        </span>
+                      </span>
+                      <span class="muted" style="font-size:12px;">${isMe && m.amount_contributed !== null ? `Tu aporte: ${formatCOP(m.amount_contributed)}` : "Monto anónimo"}</span>
+                    </div>
+                  `;
+                })
+                .join("")}
+            </div>
+          </div>
+        `
+        : "";
+
+      bodyHtml = `<div class="stack-md">${contributionsListHtml}${creatorInviteesHtml}</div>`;
+    }
+
+    root.innerHTML = `
+      <div class="bank-modal-overlay">
+        <div class="bank-modal-content" style="max-width:540px;">
+          <div class="modal-head">
+            <div>
+              <h3 class="modal-title">${modalTitle}</h3>
+              <span class="muted">${modalSubtitle}</span>
+            </div>
+            <button type="button" class="btn-icon btnModalClose" aria-label="Cerrar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          ${bodyHtml}
 
           <div class="kv" style="margin-top:16px;padding:0 4px;">
-            <span class="muted">Total</span>
+            <span class="muted">Total recaudado</span>
             <strong class="tabular-nums" style="font-size:16px;">${formatCOP(cow.collected_amount)}</strong>
           </div>
         </div>

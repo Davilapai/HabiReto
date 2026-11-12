@@ -72,7 +72,7 @@ export function initPrivacyInspector(containerId) {
       : `
         <p class="muted" style="margin:0 0 12px;">
           Respuesta de <code>GET /api/v1/cows/${currentCow.id}</code> para ${store.getActiveUser().name}.
-          Los aportes de otros llegan como <code>null</code>.
+          Solo el creador recibe <code>members</code>; los aportes viajan sin identidad en <code>contributions</code>.
         </p>
         <pre class="code-block">${JSON.stringify(
           {
@@ -81,7 +81,11 @@ export function initPrivacyInspector(containerId) {
             collected_amount: currentCow.collected_amount,
             members: (currentCow.members || []).map((m) => ({
               full_name: m.full_name,
-              amount_contributed: m.amount_contributed, // null garantizado desde el servidor
+              amount_contributed: m.amount_contributed,
+            })),
+            contributions: (currentCow.contributions || []).map((c) => ({
+              amount: c.amount,
+              contributor_name: c.contributor_name,
             })),
           },
           null,
