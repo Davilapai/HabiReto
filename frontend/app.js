@@ -41,13 +41,8 @@ document.addEventListener("DOMContentLoaded", () => {
       console.warn("No fue posible sincronizar usuarios remotos en el arranque:", err.message);
     });
 
-  // 7. Enlace y Coordinación de Navegación (Sidebar + Tabs Superiores)
-  const tabDashboard = document.getElementById("tabDashboard");
-  const tabCows = document.getElementById("tabCows");
-  const tabHistory = document.getElementById("tabHistory");
-
+  // 7. Enlace y Coordinación de Navegación Exclusiva por Sidebar
   const sideNavInicio = document.getElementById("sideNavInicio");
-  const sideNavTransfer = document.getElementById("sideNavTransfer");
   const sideNavCows = document.getElementById("sideNavCows");
   const sideNavHistory = document.getElementById("sideNavHistory");
   const sideNavSettings = document.getElementById("sideNavSettings");
@@ -61,37 +56,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const sidebarItems = [
     sideNavInicio,
-    sideNavTransfer,
     sideNavCows,
     sideNavHistory,
     sideNavSettings,
     sideNavHelp,
   ];
 
-  const topTabs = [tabDashboard, tabCows, tabHistory];
-
   function setActiveSidebar(activeItem) {
     sidebarItems.forEach((btn) => {
       if (btn) btn.classList.remove("active");
     });
     if (activeItem) activeItem.classList.add("active");
-  }
-
-  function setActiveTopTab(activeTab) {
-    topTabs.forEach((tab) => {
-      if (!tab) return;
-      tab.style.borderBottomColor = "transparent";
-      tab.style.color = "#667085";
-      tab.style.fontWeight = "500";
-      tab.setAttribute("aria-selected", "false");
-    });
-
-    if (activeTab) {
-      activeTab.style.borderBottomColor = "#173B63";
-      activeTab.style.color = "#173B63";
-      activeTab.style.fontWeight = "600";
-      activeTab.setAttribute("aria-selected", "true");
-    }
   }
 
   function hideAllSections() {
@@ -105,43 +80,28 @@ document.addEventListener("DOMContentLoaded", () => {
   function navigateTo(view) {
     hideAllSections();
 
-    if (view === "dashboard" || view === "transfer") {
-      setActiveTopTab(tabDashboard);
-      setActiveSidebar(view === "transfer" ? sideNavTransfer : sideNavInicio);
+    if (view === "dashboard") {
+      setActiveSidebar(sideNavInicio);
       if (dashboardSection) dashboardSection.style.display = "block";
       store.setActiveTab("dashboard");
       reloadDashboard();
-
-      if (view === "transfer") {
-        setTimeout(() => {
-          const recipientSelect = document.getElementById("transferRecipient");
-          if (recipientSelect) {
-            recipientSelect.focus();
-            recipientSelect.scrollIntoView({ behavior: "smooth", block: "center" });
-          }
-        }, 100);
-      }
     } else if (view === "cows") {
-      setActiveTopTab(tabCows);
       setActiveSidebar(sideNavCows);
       if (cowsSection) cowsSection.style.display = "block";
       store.setActiveTab("cows");
       reloadCows();
     } else if (view === "history") {
-      setActiveTopTab(tabHistory);
       setActiveSidebar(sideNavHistory);
       if (historySection) historySection.style.display = "block";
       store.setActiveTab("history");
       reloadHistory();
     } else if (view === "settings") {
-      setActiveTopTab(null);
       setActiveSidebar(sideNavSettings);
       if (settingsSection) {
         settingsSection.style.display = "block";
         renderSettingsView();
       }
     } else if (view === "help") {
-      setActiveTopTab(null);
       setActiveSidebar(sideNavHelp);
       if (helpSection) {
         helpSection.style.display = "block";
@@ -150,14 +110,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Event Listeners para Pestañas Superiores
-  if (tabDashboard) tabDashboard.addEventListener("click", () => navigateTo("dashboard"));
-  if (tabCows) tabCows.addEventListener("click", () => navigateTo("cows"));
-  if (tabHistory) tabHistory.addEventListener("click", () => navigateTo("history"));
-
   // Event Listeners para Enlaces del Sidebar
   if (sideNavInicio) sideNavInicio.addEventListener("click", () => navigateTo("dashboard"));
-  if (sideNavTransfer) sideNavTransfer.addEventListener("click", () => navigateTo("transfer"));
   if (sideNavCows) sideNavCows.addEventListener("click", () => navigateTo("cows"));
   if (sideNavHistory) sideNavHistory.addEventListener("click", () => navigateTo("history"));
   if (sideNavSettings) sideNavSettings.addEventListener("click", () => navigateTo("settings"));
