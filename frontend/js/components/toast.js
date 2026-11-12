@@ -31,7 +31,7 @@ const ICONS = {
 export function showToast(message, type = "info", duration = 4000) {
   const cont = ensureContainer();
   const toast = document.createElement("div");
-  toast.className = "bank-toast";
+  toast.className = `bank-toast bank-toast-${type}`;
   toast.setAttribute("role", "status");
   toast.setAttribute("aria-live", "polite");
 
