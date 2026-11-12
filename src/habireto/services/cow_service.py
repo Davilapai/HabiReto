@@ -543,7 +543,7 @@ class CowService:
 
     @staticmethod
     async def get_cow_by_id(session: AsyncSession, cow_id: uuid.UUID) -> Cow | None:
-        """Obtiene una Vaca con carga ansiosa de sus miembros, usuarios y cuenta bóveda.
+        """Obtiene una Vaca con carga ansiosa de sus miembros, transacciones y cuenta bóveda.
 
         Utiliza selectinload para precargar las relaciones y evitar excepciones
         MissingGreenlet al serializar los datos en entornos asíncronos.
@@ -561,6 +561,7 @@ class CowService:
             .options(
                 selectinload(Cow.members).selectinload(CowMember.user),
                 selectinload(Cow.vault_account),
+                selectinload(Cow.transactions),
             )
         )
         return (await session.execute(stmt)).scalar_one_or_none()
@@ -587,6 +588,7 @@ class CowService:
             .options(
                 selectinload(Cow.members).selectinload(CowMember.user),
                 selectinload(Cow.vault_account),
+                selectinload(Cow.transactions),
             )
             .order_by(Cow.created_at.desc())
         )

@@ -105,9 +105,9 @@ class TestApiCows(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(res_contrib_b.status_code, 200)
 
-        # 1. Ana consulta la vaca:
-        # Debe ver su aporte (300,000) en my_contribution y en su objeto miembro.
-        # El aporte de Bernardo y del Creador debe ser STRICTAMENTE None (null en JSON).
+        # 1. Ana (invitada) consulta la vaca anónima:
+        # Debe ver su aporte (300,000) en my_contribution, NO debe ver la lista de invitados
+        # (members == []), y debe ver la lista de aportes anónimos (contributions).
         res_view_a = await self.client.get(
             f"/api/v1/cows/{cow_id}",
             headers={"X-User-Id": member_a["user_id"]},
@@ -117,14 +117,13 @@ class TestApiCows(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data_a["collected_amount"], 700000)
         self.assertEqual(data_a["progress_percentage"], 70.0)
         self.assertEqual(data_a["my_contribution"], 300000)
-
-        members_map_a = {m["user_id"]: m["amount_contributed"] for m in data_a["members"]}
-        self.assertEqual(members_map_a[member_a["user_id"]], 300000)
-        self.assertIsNone(members_map_a[member_b["user_id"]])
-        self.assertIsNone(members_map_a[creator["user_id"]])
+        self.assertEqual(data_a["members"], [])
+        self.assertEqual(len(data_a["contributions"]), 2)
+        for c in data_a["contributions"]:
+            self.assertIsNone(c["contributor_name"])
 
         # 2. El CREADOR consulta la vaca:
-        # INVARIANTE: Ni siquiera el creador puede ver cuánto aportó Ana o Bernardo.
+        # Sabe quiénes están invitados (members), pero los montos de terceros son None.
         res_view_creator = await self.client.get(
             f"/api/v1/cows/{cow_id}",
             headers={"X-User-Id": creator["user_id"]},
@@ -134,9 +133,10 @@ class TestApiCows(unittest.IsolatedAsyncioTestCase):
         members_map_creator = {m["user_id"]: m["amount_contributed"] for m in data_creator["members"]}
         self.assertIsNone(members_map_creator[member_a["user_id"]])
         self.assertIsNone(members_map_creator[member_b["user_id"]])
+        self.assertEqual(len(data_creator["contributions"]), 2)
 
         # 3. Un usuario extraño consulta la vaca:
-        # CERO montos expuestos en la lista de miembros.
+        # CERO miembros expuestos en la lista de invitados.
         res_view_stranger = await self.client.get(
             f"/api/v1/cows/{cow_id}",
             headers={"X-User-Id": stranger["user_id"]},
@@ -144,8 +144,7 @@ class TestApiCows(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res_view_stranger.status_code, 200)
         data_stranger = res_view_stranger.json()
         self.assertEqual(data_stranger["my_contribution"], 0)
-        for m in data_stranger["members"]:
-            self.assertIsNone(m["amount_contributed"])
+        self.assertEqual(data_stranger["members"], [])
 
     async def test_cow_auto_completion_on_target_reached(self) -> None:
         """Verifica que alcanzar o superar la meta transicione automáticamente a COMPLETED."""

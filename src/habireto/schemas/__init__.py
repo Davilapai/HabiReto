@@ -13,6 +13,7 @@ from habireto.schemas.account import (
 )
 from habireto.schemas.cow import (
     CowContributeRequest,
+    CowContributionView,
     CowCreateRequest,
     CowDetailResponse,
     CowMemberView,
@@ -27,6 +28,7 @@ __all__ = [
     "AccountResponse",
     "BalanceResponse",
     "CowContributeRequest",
+    "CowContributionView",
     "CowCreateRequest",
     "CowDetailResponse",
     "CowMemberView",
