@@ -418,6 +418,60 @@ class CowService:
         return tx
 
     @staticmethod
+    async def finish_cow(
+        session: AsyncSession,
+        cow_id: uuid.UUID,
+        requesting_user_id: uuid.UUID,
+    ) -> Cow:
+        """Termina una Vaquita activa o completada, tenga o no fondos recaudados.
+
+        - Si la bóveda posee fondos (> 0), ejecuta el desembolso atómico completo
+          hacia la cuenta personal del creador (`CowService.disburse`).
+        - Si la bóveda está en cero ($0), cierra la Vaquita transicionando su estado
+          a DISBURSED para archivarla en el historial sin generar asientos contables de $0.
+
+        Args:
+            session: Sesión asíncrona de base de datos activa.
+            cow_id: Identificador de la Vaquita a terminar.
+            requesting_user_id: Identificador del usuario solicitante (debe ser el creador).
+
+        Returns:
+            Cow: Entidad de la Vaquita actualizada en estado DISBURSED.
+
+        Raises:
+            CowNotFoundError: Si la Vaquita no existe.
+            UnauthorizedError: Si quien solicita no es el creador.
+            CowDisbursementError: Si la Vaquita ya estaba terminada o cancelada.
+        """
+        cow_stmt = select(Cow).where(Cow.id == cow_id).with_for_update()
+        cow = (await session.execute(cow_stmt)).scalar_one_or_none()
+        if cow is None:
+            raise CowNotFoundError(f"Fondo colaborativo no encontrado: {cow_id}")
+
+        if cow.creator_id != requesting_user_id:
+            raise UnauthorizedError("Solo el creador puede terminar esta Vaquita.")
+
+        if cow.status not in (CowStatus.COMPLETED.value, CowStatus.ACTIVE.value):
+            raise CowDisbursementError(
+                f"No es posible terminar una Vaquita en estado '{cow.status}'."
+            )
+
+        vault_stmt = select(Account).where(Account.id == cow.vault_account_id).with_for_update()
+        vault_acc = (await session.execute(vault_stmt)).scalar_one_or_none()
+
+        if vault_acc is not None and vault_acc.balance > 0:
+            await CowService.disburse(
+                session=session,
+                cow_id=cow_id,
+                requesting_user_id=requesting_user_id,
+            )
+        else:
+            cow.status = CowStatus.DISBURSED.value
+            await session.flush()
+
+        return cow
+
+    @staticmethod
     async def cancel_and_refund(
         session: AsyncSession,
         cow_id: uuid.UUID,
