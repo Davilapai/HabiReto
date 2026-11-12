@@ -156,7 +156,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ],
       [
         "¿Cuáles son los 2 tipos de Vaquita?",
-        "<strong>1. Vaquita Pública:</strong> El creador puede ver cuánto han aportado todas las personas que invitó (incluso quienes llevan $0). Las personas invitadas solo ven los aportes ya realizados por los demás participantes.<br><br><strong>2. Vaquita Privada:</strong> Solo el creador sabe quiénes son todas las personas invitadas. El resto de participantes no ve la lista de invitados y todos observan cómo se van llenando los aportes con avisos anónimos como <em>«Alguien ha aportado $60.000»</em>.",
+        "<strong>1. Vaquita Pública:</strong> El creador puede ver cuánto han aportado todas las personas que invitó (incluso quienes llevan $0). Las personas invitadas solo ven los aportes ya realizados por los demás participantes.<br><br><strong>2. Vaquita Privada:</strong> Solo el creador sabe todas las personas que participan, nadie sabe cuánto aporta cada persona, esto es oculto hasta para el creador. Todos observan únicamente cómo se van llenando los aportes con avisos anónimos como <em>«Alguien ha aportado $60.000»</em>.",
       ],
       [
         "¿Cómo funcionan las llaves únicas (@ABC123)?",
