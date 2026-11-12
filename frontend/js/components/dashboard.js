@@ -2,9 +2,9 @@
  * Módulo del Panel Central (Dashboard) para HabiReto.
  * 
  * Implementa la interfaz principal de banca digital con el mínimo de ruido:
- * 1. Saldo disponible y número de cuenta.
- * 2. Recarga simulada con atajos de un clic.
- * 3. Transferencia P2P con cálculo en vivo del saldo restante y atajos de montos.
+ * 1. Saldo disponible, número de cuenta y llave única estilo Bre-B (@ABC123).
+ * 2. Recarga directa escribiendo el monto.
+ * 3. Transferencia P2P mediante llave única (@ABC123) con cálculo en vivo del saldo restante.
  */
 
 import { api, formatCOP } from "../api.js";
@@ -51,13 +51,7 @@ export function initDashboard(containerId) {
     const active = state.activeUser;
     const balance = state.balance || 0;
 
-    // Destinatarios disponibles excluyendo al usuario autenticado actual
-    const availableRecipients = store.getUsers().filter(
-      (u) => u.id !== active.id && u.accountId
-    );
-
-    // Composición mínima: saldo + recarga a la izquierda, transferencia a la derecha.
-    // Se omiten métricas técnicas (invariantes, bloqueos) que no ayudan a operar.
+    // Composición mínima: saldo + recarga directa a la izquierda, transferencia por llave @ABC123 a la derecha.
     container.innerHTML = `
       <div class="split">
 
@@ -65,16 +59,20 @@ export function initDashboard(containerId) {
           <div class="balance-card">
             <span class="balance-label">Saldo disponible</span>
             <span class="balance-amount tabular-nums">${formatCOP(balance)}</span>
-            <span class="balance-meta tabular-nums">${active.accountNumber || "ACC-001"} · COP</span>
+            <span class="balance-meta tabular-nums">${active.userKey || "@ALI111"} · ${active.accountNumber || "ACC-001"} · COP</span>
           </div>
 
           <div class="bank-card">
             <h2 class="card-title">Recargar</h2>
-            <div class="chips">
-              <button type="button" id="btnLoad50k" class="bank-btn-chip" ${isSubmittingLoad ? "disabled" : ""}>+$50.000</button>
-              <button type="button" id="btnLoad100k" class="bank-btn-chip" ${isSubmittingLoad ? "disabled" : ""}>+$100.000</button>
-              <button type="button" id="btnLoad200k" class="bank-btn-chip" ${isSubmittingLoad ? "disabled" : ""}>+$200.000</button>
-            </div>
+            <form id="loadBalanceForm" class="stack-sm">
+              <div>
+                <label class="bank-label" for="loadAmountInput">Monto (COP)</label>
+                <input id="loadAmountInput" class="bank-input tabular-nums" type="number" min="1" step="any" placeholder="0" required />
+              </div>
+              <button type="submit" id="btnSubmitLoad" class="bank-btn bank-btn-secondary" style="padding:10px 16px;" ${isSubmittingLoad ? "disabled" : ""}>
+                ${isSubmittingLoad ? `<span class="bank-spinner"></span> Recargando…` : "Recargar"}
+              </button>
+            </form>
           </div>
         </div>
 
@@ -83,16 +81,8 @@ export function initDashboard(containerId) {
 
           <form id="transferForm" class="stack-md">
             <div>
-              <label class="bank-label" for="transferRecipient">Para</label>
-              <select id="transferRecipient" class="bank-select" required>
-                <option value="" disabled selected>Selecciona un destinatario</option>
-                ${availableRecipients
-                  .map(
-                    (r) =>
-                      `<option value="${r.accountId}" data-name="${r.name}">${r.name} · ${r.phone}</option>`
-                  )
-                  .join("")}
-              </select>
+              <label class="bank-label" for="transferRecipientKey">Llave del destinatario</label>
+              <input id="transferRecipientKey" class="bank-input tabular-nums" type="text" placeholder="Ej. @BOB222" maxlength="7" required />
             </div>
 
             <div>
@@ -103,11 +93,6 @@ export function initDashboard(containerId) {
                 </span>
               </div>
               <input id="transferAmount" class="bank-input tabular-nums" type="number" min="1" step="any" placeholder="0" required />
-              <div class="chips" style="margin-top:8px;">
-                <button type="button" class="bank-btn-chip btnPresetTransfer" data-val="20000">$20.000</button>
-                <button type="button" class="bank-btn-chip btnPresetTransfer" data-val="50000">$50.000</button>
-                ${balance > 0 ? `<button type="button" class="bank-btn-chip btnPresetTransfer" data-val="${balance}">Todo</button>` : ""}
-              </div>
             </div>
 
             <div>
@@ -125,9 +110,8 @@ export function initDashboard(containerId) {
     `;
 
     // Asignación de manejadores de eventos
-    const btnLoad50k = container.querySelector("#btnLoad50k");
-    const btnLoad100k = container.querySelector("#btnLoad100k");
-    const btnLoad200k = container.querySelector("#btnLoad200k");
+    const loadForm = container.querySelector("#loadBalanceForm");
+    const loadAmountInput = container.querySelector("#loadAmountInput");
     const transferForm = container.querySelector("#transferForm");
     const amountInput = container.querySelector("#transferAmount");
     const remainingIndicator = container.querySelector("#remainingBalanceIndicator");
@@ -148,51 +132,60 @@ export function initDashboard(containerId) {
       });
     }
 
-    // Chips de montos rápidos en transferencia
-    container.querySelectorAll(".btnPresetTransfer").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        amountInput.value = btn.getAttribute("data-val");
-        amountInput.dispatchEvent(new Event("input"));
+    // Manejador de recarga por monto escrito directamente
+    if (loadForm && loadAmountInput) {
+      loadForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        if (isSubmittingLoad) return;
+
+        const amount = Number(loadAmountInput.value);
+        if (isNaN(amount) || amount <= 0) {
+          showToast("Ingresa un monto válido mayor a 0", "warning");
+          return;
+        }
+
+        isSubmittingLoad = true;
+        const submitBtn = container.querySelector("#btnSubmitLoad");
+        if (submitBtn) submitBtn.disabled = true;
+
+        try {
+          const res = await api.loadBalance(active.accountId, amount, `Recarga +$${amount.toLocaleString()}`);
+          showToast(`Recarga exitosa por ${formatCOP(amount)}`, "success");
+          loadAmountInput.value = "";
+          store.setState({ balance: res.balance });
+          const history = await api.getHistory(active.accountId);
+          store.setState({ history });
+        } catch (err) {
+          showToast(err.message, "error");
+        } finally {
+          isSubmittingLoad = false;
+          if (submitBtn) submitBtn.disabled = false;
+        }
       });
-    });
-
-    // Manejador de recargas rápidas
-    async function handleLoad(amount) {
-      if (isSubmittingLoad) return;
-      isSubmittingLoad = true;
-
-      try {
-        const res = await api.loadBalance(active.accountId, amount, `Recarga rápida +$${amount.toLocaleString()}`);
-        showToast(`Recarga exitosa por ${formatCOP(amount)}`, "success");
-        store.setState({ balance: res.balance });
-        const history = await api.getHistory(active.accountId);
-        store.setState({ history });
-      } catch (err) {
-        showToast(err.message, "error");
-      } finally {
-        isSubmittingLoad = false;
-      }
     }
 
-    if (btnLoad50k) btnLoad50k.addEventListener("click", () => handleLoad(50000));
-    if (btnLoad100k) btnLoad100k.addEventListener("click", () => handleLoad(100000));
-    if (btnLoad200k) btnLoad200k.addEventListener("click", () => handleLoad(200000));
-
-    // Manejador del formulario de transferencias P2P
+    // Manejador del formulario de transferencias P2P mediante llave @ABC123
     if (transferForm) {
       transferForm.addEventListener("submit", async (e) => {
         e.preventDefault();
-        const recipientSelect = container.querySelector("#transferRecipient");
+        const recipientKeyInput = container.querySelector("#transferRecipientKey");
         const motiveInput = container.querySelector("#transferMotive");
 
-        const destAccountId = recipientSelect.value;
-        const recipientOption = recipientSelect.options[recipientSelect.selectedIndex];
-        const recipientName = recipientOption ? recipientOption.getAttribute("data-name") : "Destinatario";
+        let destKey = (recipientKeyInput.value || "").trim().toUpperCase();
+        if (destKey && !destKey.startsWith("@")) {
+          destKey = `@${destKey}`;
+        }
+
         const amount = Number(amountInput.value);
         const motive = motiveInput.value.trim() || "Transferencia P2P";
 
-        if (!destAccountId) {
-          showToast("Debes seleccionar un destinatario válido", "warning");
+        if (!/^@[A-Z]{3}[0-9]{3}$/.test(destKey)) {
+          showToast("La llave debe iniciar con @ seguida de 3 letras y 3 números (ej. @BOB222)", "warning");
+          return;
+        }
+
+        if (active.userKey && destKey === active.userKey.toUpperCase()) {
+          showToast("No puedes transferir a tu propia llave", "warning");
           return;
         }
 
@@ -209,10 +202,11 @@ export function initDashboard(containerId) {
         isSubmittingTransfer = true;
 
         try {
-          await api.transfer(active.accountId, destAccountId, amount, motive);
-          showToast(`Transferencia exitosa de ${formatCOP(amount)} a ${recipientName}`, "success");
+          await api.transfer(active.accountId, destKey, amount, motive);
+          showToast(`Transferencia exitosa de ${formatCOP(amount)} a ${destKey}`, "success");
           
           store.setState({ balance: Math.max(0, balance - amount) });
+          recipientKeyInput.value = "";
           amountInput.value = "";
           motiveInput.value = "";
 

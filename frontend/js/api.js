@@ -90,22 +90,27 @@ export const api = {
     });
   },
 
-  // Transferencias P2P
-  async transfer(sourceAccountId, destinationAccountId, amount, description = "Transferencia P2P") {
+  // Transferencias P2P (por llave @ABC123 o cuenta destino)
+  async transfer(sourceAccountId, destinationKeyOrAccountId, amount, description = "Transferencia P2P") {
     const idempotencyKey = crypto.randomUUID();
+    const target = String(destinationKeyOrAccountId || "").trim();
+    const isKey = target.startsWith("@");
+    const payload = {
+      source_account_id: sourceAccountId,
+      amount: Number(amount),
+      description,
+      ...(isKey
+        ? { destination_key: target.toUpperCase() }
+        : { destination_account_id: target }),
+    };
     return await request("/transfers", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey },
-      body: JSON.stringify({
-        source_account_id: sourceAccountId,
-        destination_account_id: destinationAccountId,
-        amount: Number(amount),
-        description,
-      }),
+      body: JSON.stringify(payload),
     });
   },
 
-  // Fondos colaborativos (Vacas)
+  // Fondos colaborativos (Vaquitas)
   async listCows(status = null) {
     const query = status ? `?status=${encodeURIComponent(status)}` : "";
     return await request(`/cows${query}`, { method: "GET" });
@@ -115,7 +120,7 @@ export const api = {
     return await request(`/cows/${cowId}`, { method: "GET" });
   },
 
-  async createCow(title, description, targetAmount, visibilityType = "PUBLIC", deadline = null, invitedUserIds = []) {
+  async createCow(title, description, targetAmount, visibilityType = "PUBLIC", deadline = null, invitedKeys = []) {
     return await request("/cows", {
       method: "POST",
       body: JSON.stringify({
@@ -124,7 +129,7 @@ export const api = {
         target_amount: Number(targetAmount),
         visibility_type: visibilityType,
         deadline: deadline || null,
-        invited_user_ids: invitedUserIds || [],
+        invited_keys: invitedKeys || [],
       }),
     });
   },

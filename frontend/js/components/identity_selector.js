@@ -89,7 +89,7 @@ export function initIdentitySelector(containerId) {
                           <span class="avatar ${isActive ? "avatar-active" : ""}">${u.initials || "US"}</span>
                           <span>
                             <span style="display:block;font-weight:600;color:#0F172A;">${u.name}</span>
-                            <span class="muted tabular-nums" style="font-size:12px;">${u.phone}</span>
+                            <span class="muted tabular-nums" style="font-size:12px;">${u.userKey || "@USR000"}</span>
                           </span>
                         </span>
                         ${isActive ? `<span class="muted" style="font-size:12px;">Actual</span>` : ""}
@@ -212,7 +212,8 @@ export function initIdentitySelector(containerId) {
               });
 
               store.addUser(newUser);
-              showToast(`Persona ${fullName} registrada exitosamente`, "success");
+              const assignedKey = store.getActiveUser().userKey || "";
+              showToast(`Persona ${fullName} registrada (${assignedKey})`, "success");
               closeAction();
             } catch (err) {
               showToast(err.message || "Error al registrar persona.", "error");
