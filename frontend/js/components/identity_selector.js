@@ -1,13 +1,13 @@
 /**
  * Selector de identidad activa y gestión unificada de personas para HabiReto.
  * 
- * Implementa el rediseño Modern Digital Banking del Navbar:
- * - Tarjeta del usuario activo en azul marino (#173B63) con saludo "Hola {Nombre}" (sin apellidos).
- * - Botón de gestión "Cambiar o Registrar Persona" con modal unificado para alternar
- *   cuentas con un solo clic o dar de alta nuevos usuarios y cuentas bancarias.
+ * Implementa el control de identidades en la barra superior:
+ * - Avatar del usuario activo con iniciales, saludo "Hola, {Nombre}", rol y cursor interactivo.
+ * - Botón de acceso directo "+ Registrar Persona".
+ * - Modal unificado con conmutación en un solo clic y formulario de alta de cuentas.
  */
 
-import { api } from "../api.js";
+import { api, formatCOP } from "../api.js";
 import { store } from "../state.js";
 import { showToast } from "./toast.js";
 
@@ -20,33 +20,36 @@ export function initIdentitySelector(containerId) {
 
   function render(state) {
     const active = state.activeUser;
-    // Extraer primer nombre de pila (sin apellidos)
     const firstName =
       active.shortName ||
       (active.name ? active.name.trim().split(/\s+/)[0] : "Usuario");
 
     container.innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         
-        <!-- Botón para Gestionar Personas (Registrar o Cambiar) -->
-        <button type="button" id="btnManageUsers" class="bank-btn bank-btn-secondary" style="font-size:13px;padding:7px 14px;display:flex;align-items:center;gap:8px;border-radius:8px;font-weight:500;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-            <circle cx="9" cy="7" r="4"></circle>
-            <line x1="19" y1="8" x2="19" y2="14"></line>
-            <line x1="22" y1="11" x2="16" y2="11"></line>
+        <!-- Botón para Registrar Nueva Persona -->
+        <button type="button" id="btnQuickRegister" class="bank-btn bank-btn-secondary bank-btn-sm" style="font-weight:600;gap:6px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
           <span>Registrar Persona</span>
         </button>
 
-        <!-- Tarjeta del Usuario Activo en Azul (Lado Derecho) -->
-        <div style="display:flex;align-items:center;gap:10px;padding:6px 14px;background:#173B63;color:#FFFFFF;border-radius:8px;box-shadow:0 1px 3px rgba(16,24,40,0.12);">
-          <div style="width:28px;height:28px;border-radius:50%;background:#FFFFFF;color:#173B63;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;letter-spacing:0.5px;">
+        <!-- Tarjeta del Usuario Activo (Click para Cambiar de Cuenta) -->
+        <div id="btnSwitchPersona" style="display:flex;align-items:center;gap:10px;padding:6px 14px;background:#173B63;color:#FFFFFF;border-radius:10px;cursor:pointer;user-select:none;box-shadow:0 1px 3px rgba(15,23,42,0.12);transition:all 140ms;" title="Haz clic para alternar entre cuentas de prueba">
+          <div style="width:28px;height:28px;border-radius:50%;background:#FFFFFF;color:#173B63;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">
             ${active.initials || "US"}
           </div>
-          <span style="font-size:14px;font-weight:600;color:#FFFFFF;letter-spacing:-0.2px;">
-            Hola ${firstName}
-          </span>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:#FFFFFF;line-height:1.2;">
+              Hola, ${firstName}
+            </div>
+            <div style="font-size:11px;color:#8FAEC9;line-height:1;">
+              ${active.role || "Usuario"}
+            </div>
+          </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8FAEC9" stroke-width="2.5" style="margin-left:2px;"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
 
       </div>
@@ -55,20 +58,22 @@ export function initIdentitySelector(containerId) {
       <div id="manageUsersModalRoot"></div>
     `;
 
-    // Manejador para abrir el modal de gestión unificada
-    const btnManage = container.querySelector("#btnManageUsers");
-    if (btnManage) {
-      btnManage.addEventListener("click", () => {
-        openManageUsersModal();
-      });
+    const btnRegister = container.querySelector("#btnQuickRegister");
+    const btnSwitch = container.querySelector("#btnSwitchPersona");
+
+    if (btnRegister) {
+      btnRegister.addEventListener("click", () => openManageUsersModal("register"));
+    }
+    if (btnSwitch) {
+      btnSwitch.addEventListener("click", () => openManageUsersModal("switch"));
     }
   }
 
-  function openManageUsersModal() {
+  function openManageUsersModal(defaultTab = "switch") {
     const modalRoot = container.querySelector("#manageUsersModalRoot");
     if (!modalRoot) return;
 
-    activeModalTab = "switch";
+    activeModalTab = defaultTab;
 
     function renderModalContent() {
       const active = store.getActiveUser();
@@ -76,25 +81,25 @@ export function initIdentitySelector(containerId) {
 
       modalRoot.innerHTML = `
         <div class="bank-modal-overlay">
-          <div class="bank-modal-content" style="max-width:480px;padding:24px;">
+          <div class="bank-modal-content" style="max-width:500px;padding:24px;">
             
             <!-- Cabecera del Modal -->
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid #E2E8F0;">
               <div>
-                <h3 style="font-size:18px;font-weight:600;margin:0;color:#111827;">Gestión de Personas</h3>
-                <span style="font-size:12px;color:#667085;">Cambia de cuenta para operar o registra una nueva identidad</span>
+                <h3 style="font-size:18px;font-weight:700;margin:0;color:#0F172A;">Gestión de Identidades</h3>
+                <span style="font-size:12px;color:#64748B;">Alterna entre identidades del Sandbox o crea una nueva persona</span>
               </div>
-              <button type="button" id="btnCloseManageModal" style="background:none;border:none;cursor:pointer;color:#98A2B3;padding:4px;">
+              <button type="button" id="btnCloseManageModal" style="background:none;border:none;cursor:pointer;color:#94A3B8;padding:4px;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
 
             <!-- Pestañas internas del Modal -->
-            <div style="display:flex;gap:8px;border-bottom:1px solid #E5EAF0;margin-bottom:18px;">
-              <button type="button" id="tabSwitchUser" style="background:none;border:none;border-bottom:2px solid ${activeModalTab === 'switch' ? '#173B63' : 'transparent'};color:${activeModalTab === 'switch' ? '#173B63' : '#667085'};font-size:13px;font-weight:${activeModalTab === 'switch' ? '600' : '500'};padding:8px 12px;cursor:pointer;">
-                Cambiar de Usuario (${users.length})
+            <div style="display:flex;gap:8px;background:#EDF2F7;padding:4px;border-radius:10px;margin-bottom:18px;">
+              <button type="button" id="tabSwitchUser" style="flex:1;background:${activeModalTab === 'switch' ? '#FFFFFF' : 'transparent'};border:none;border-radius:8px;color:${activeModalTab === 'switch' ? '#173B63' : '#64748B'};font-size:13px;font-weight:600;padding:8px 12px;cursor:pointer;box-shadow:${activeModalTab === 'switch' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none'};">
+                Cambiar de Cuenta (${users.length})
               </button>
-              <button type="button" id="tabRegisterUser" style="background:none;border:none;border-bottom:2px solid ${activeModalTab === 'register' ? '#173B63' : 'transparent'};color:${activeModalTab === 'register' ? '#173B63' : '#667085'};font-size:13px;font-weight:${activeModalTab === 'register' ? '600' : '500'};padding:8px 12px;cursor:pointer;">
+              <button type="button" id="tabRegisterUser" style="flex:1;background:${activeModalTab === 'register' ? '#FFFFFF' : 'transparent'};border:none;border-radius:8px;color:${activeModalTab === 'register' ? '#173B63' : '#64748B'};font-size:13px;font-weight:600;padding:8px 12px;cursor:pointer;box-shadow:${activeModalTab === 'register' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none'};">
                 + Registrar Persona
               </button>
             </div>
@@ -103,29 +108,29 @@ export function initIdentitySelector(containerId) {
             ${
               activeModalTab === "switch"
                 ? `
-                <div style="display:flex;flex-direction:column;gap:10px;max-height:280px;overflow-y:auto;padding-right:4px;">
+                <div style="display:flex;flex-direction:column;gap:10px;max-height:300px;overflow-y:auto;padding-right:2px;">
                   ${users
                     .map((u) => {
                       const isActive = u.id === active.id;
                       return `
-                      <div class="user-select-row" data-user-key="${u.key || u.id}" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border:1px solid ${isActive ? '#173B63' : '#E5EAF0'};border-radius:8px;background:${isActive ? '#F5F7FA' : '#FFFFFF'};cursor:${isActive ? 'default' : 'pointer'};transition:all 150ms;">
-                        <div style="display:flex;align-items:center;gap:10px;">
-                          <div style="width:32px;height:32px;border-radius:50%;background:${isActive ? '#173B63' : '#E5EAF0'};color:${isActive ? '#FFFFFF' : '#111827'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">
+                      <div class="user-select-row" data-user-key="${u.key || u.id}" style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border:1px solid ${isActive ? '#173B63' : '#E2E8F0'};border-radius:10px;background:${isActive ? '#F0F6FC' : '#FFFFFF'};cursor:${isActive ? 'default' : 'pointer'};transition:all 140ms;">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                          <div style="width:34px;height:34px;border-radius:50%;background:${isActive ? '#173B63' : '#EDF2F7'};color:${isActive ? '#FFFFFF' : '#334155'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">
                             ${u.initials || "US"}
                           </div>
                           <div>
                             <div style="display:flex;align-items:center;gap:6px;">
-                              <span style="font-size:13px;font-weight:600;color:#111827;">${u.name}</span>
-                              <span class="badge badge-navy" style="font-size:10px;padding:0 5px;">${u.role || "Usuario"}</span>
+                              <span style="font-size:14px;font-weight:700;color:#0F172A;">${u.name}</span>
+                              <span class="badge badge-navy" style="font-size:11px;padding:2px 6px;">${u.role || "Usuario"}</span>
                             </div>
-                            <span style="font-size:11px;color:#667085;font-family:monospace;">${u.phone}</span>
+                            <span style="font-size:12px;color:#64748B;font-family:monospace;">${u.phone}</span>
                           </div>
                         </div>
                         <div>
                           ${
                             isActive
                               ? `<span class="badge badge-success" style="font-size:11px;">Sesión Activa</span>`
-                              : `<button type="button" class="bank-btn bank-btn-secondary" style="font-size:11px;padding:4px 10px;pointer-events:none;">Seleccionar</button>`
+                              : `<button type="button" class="bank-btn bank-btn-secondary bank-btn-sm" style="pointer-events:none;">Seleccionar</button>`
                           }
                         </div>
                       </div>
@@ -134,11 +139,11 @@ export function initIdentitySelector(containerId) {
                     .join("")}
                 </div>
 
-                <div style="margin-top:16px;padding-top:12px;border-top:1px solid #E5EAF0;display:flex;justify-content:space-between;align-items:center;">
-                  <button type="button" id="btnGoRegisterTab" style="background:none;border:none;color:#173B63;font-size:12px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline;">
+                <div style="margin-top:18px;padding-top:14px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center;">
+                  <button type="button" id="btnGoRegisterTab" style="background:none;border:none;color:#173B63;font-size:13px;font-weight:600;cursor:pointer;padding:0;text-decoration:underline;">
                     + Registrar nueva persona
                   </button>
-                  <button type="button" id="btnCancelManageModal" class="bank-btn bank-btn-secondary" style="font-size:12px;padding:6px 14px;">Cerrar</button>
+                  <button type="button" id="btnCancelManageModal" class="bank-btn bank-btn-secondary bank-btn-sm">Cerrar</button>
                 </div>
               `
                 : `
@@ -157,18 +162,18 @@ export function initIdentitySelector(containerId) {
                   <div>
                     <label class="bank-label" for="regPhone">Teléfono celular (+57...): *</label>
                     <input type="tel" id="regPhone" class="bank-input" required placeholder="+573004445555" maxlength="50">
-                    <span style="font-size:11px;color:#667085;">Utilizado como alias para transferencias entre personas.</span>
+                    <span style="font-size:11px;color:#64748B;margin-top:3px;display:block;">Identificador utilizado para transferencias P2P.</span>
                   </div>
 
                   <div>
                     <label class="bank-label" for="regInitialBalance">Saldo inicial de apertura (COP):</label>
-                    <input type="number" id="regInitialBalance" class="bank-input" min="0" step="any" value="50000" placeholder="0">
+                    <input type="number" id="regInitialBalance" class="bank-input tabular-nums" min="0" step="any" value="50000" placeholder="0">
                   </div>
 
-                  <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px;">
-                    <button type="button" id="btnBackToSwitch" class="bank-btn bank-btn-secondary" style="font-size:12px;padding:7px 14px;">Volver</button>
-                    <button type="submit" id="btnSubmitRegisterUser" class="bank-btn bank-btn-primary" style="font-size:12px;padding:7px 16px;" ${isRegistering ? "disabled" : ""}>
-                      ${isRegistering ? "Registrando..." : "Crear Persona"}
+                  <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:10px;padding-top:12px;border-top:1px solid #E2E8F0;">
+                    <button type="button" id="btnBackToSwitch" class="bank-btn bank-btn-secondary bank-btn-sm">Volver</button>
+                    <button type="submit" id="btnSubmitRegisterUser" class="bank-btn bank-btn-primary bank-btn-sm" ${isRegistering ? "disabled" : ""}>
+                      ${isRegistering ? `<span class="bank-spinner"></span> Registrando...` : `Crear Persona`}
                     </button>
                   </div>
                 </form>
@@ -257,10 +262,7 @@ export function initIdentitySelector(containerId) {
 
             isRegistering = true;
             const submitBtn = modalRoot.querySelector("#btnSubmitRegisterUser");
-            if (submitBtn) {
-              submitBtn.disabled = true;
-              submitBtn.textContent = "Registrando...";
-            }
+            if (submitBtn) submitBtn.disabled = true;
 
             try {
               const newUser = await api.createUser({
@@ -270,7 +272,6 @@ export function initIdentitySelector(containerId) {
                 initial_balance: initialBalance,
               });
 
-              // Agregar usuario al almacén y conmutar sesión a él
               store.addUser(newUser);
               showToast(`Persona ${fullName} registrada exitosamente`, "success");
               closeAction();
@@ -278,10 +279,6 @@ export function initIdentitySelector(containerId) {
               showToast(err.message || "Error al registrar persona.", "error");
             } finally {
               isRegistering = false;
-              if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = "Crear Persona";
-              }
             }
           });
         }
@@ -291,7 +288,6 @@ export function initIdentitySelector(containerId) {
     renderModalContent();
   }
 
-  // Render inicial y suscripción a cambios de estado
   render(store.getState());
   store.subscribe(render);
 }
