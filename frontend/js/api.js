@@ -172,6 +172,17 @@ export function formatCOP(amount) {
 }
 
 /**
+ * Formatea un número entero con separadores de miles colombianos sin símbolo monetario.
+ */
+export function formatNumber(amount) {
+  const num = Number(amount) || 0;
+  return new Intl.NumberFormat("es-CO", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(num);
+}
+
+/**
  * Formatea una marca de tiempo ISO en fecha y hora legible.
  */
 export function formatDate(isoDateStr) {
