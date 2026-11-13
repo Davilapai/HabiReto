@@ -68,16 +68,6 @@ export function initCows(containerId) {
   }
 
   /**
-   * Muestra u oculta el bloque del Inspector de Privacidad según si estamos en el listado o creando.
-   */
-  function syncInspectorVisibility() {
-    const inspectorRoot = document.getElementById("privacyInspectorRoot");
-    if (inspectorRoot) {
-      inspectorRoot.style.display = viewMode === "list" ? "block" : "none";
-    }
-  }
-
-  /**
    * Renderiza la vista activa del módulo de Vaquitas (Listado o Pantalla Completa de Creación).
    *
    * @param {Object} state - Estado global reactivo.
@@ -109,7 +99,6 @@ export function initCows(containerId) {
 
     const activeCount = myCows.length + otherCows.length;
     updateSidebarBadge(activeCount);
-    syncInspectorVisibility();
 
     if (viewMode === "create") {
       renderCreateFullScreenView(state);
@@ -328,8 +317,9 @@ export function initCows(containerId) {
     const progress = Math.min(100, Math.round((displayCollected / cow.target_amount) * 100));
     const remaining = Math.max(0, cow.target_amount - displayCollected);
 
+    const isFull = isCompleted || remaining <= 0;
     const canDisburse = isMine && (isActive || isCompleted);
-    const canContribute = (isActive || isCompleted) && !isDisbursed && !isCancelled;
+    const canContribute = isActive && !isFull && !isDisbursed && !isCancelled;
 
     const creatorMember = (cow.members || []).find((m) => m.role === "CREATOR");
     const creatorName = cow.creator_name || (creatorMember ? creatorMember.full_name : "Organizador");
@@ -513,22 +503,44 @@ export function initCows(containerId) {
                     class="btnOpenContribute flex items-center justify-center gap-2 px-4 py-2.5 bg-[#4a7c59] hover:bg-[#3d6749] text-white font-bold text-sm rounded-xl transition-all shadow-sm shadow-[#4a7c59]/20 cursor-pointer border-0"
                   >
                     <span class="material-symbols-outlined text-lg">add</span>
-                    <span>${isCompleted ? "Aportar más" : "Aportar"}</span>
+                    <span>Aportar</span>
                   </button>`
-                : ""
+                : `<div class="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-[#e8f1eb] text-[#20462c] font-bold text-xs rounded-xl border border-[#c5ddcd] select-none">
+                    <span class="material-symbols-outlined text-base">lock</span>
+                    <span>Vaquita cerrada (100%)</span>
+                  </div>`
             }
           </div>
 
           ${
             canDisburse
-              ? `<button
-                  type="button"
-                  data-id="${cow.id}"
-                  class="btnOpenDisburse w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-[#20462c] bg-transparent text-[#20462c] hover:bg-[#e8f1eb] font-bold text-sm transition-all cursor-pointer"
-                >
-                  <span class="material-symbols-outlined text-base">check_circle</span>
-                  <span>Terminar Vaquita</span>
-                </button>`
+              ? isFull
+                ? `<div class="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      data-id="${cow.id}"
+                      class="btnOpenDisburse flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-[#4a7c59] hover:bg-[#3d6749] text-white font-bold text-sm transition-all shadow-sm cursor-pointer border-0"
+                    >
+                      <span class="material-symbols-outlined text-base">account_balance_wallet</span>
+                      <span>Recibir dinero</span>
+                    </button>
+                    <button
+                      type="button"
+                      data-id="${cow.id}"
+                      class="btnOpenDisburse flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl border border-[#f5c2bf] bg-[#fdf2f2] text-[#b83230] hover:bg-[#fbe4e4] font-bold text-sm transition-all cursor-pointer"
+                    >
+                      <span class="material-symbols-outlined text-base">replay</span>
+                      <span>Reembolsar</span>
+                    </button>
+                  </div>`
+                : `<button
+                    type="button"
+                    data-id="${cow.id}"
+                    class="btnOpenDisburse w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-[#20462c] bg-transparent text-[#20462c] hover:bg-[#e8f1eb] font-bold text-sm transition-all cursor-pointer"
+                  >
+                    <span class="material-symbols-outlined text-base">check_circle</span>
+                    <span>Terminar Vaquita</span>
+                  </button>`
               : ""
           }
         </div>
@@ -648,7 +660,7 @@ export function initCows(containerId) {
                       required
                       value="${createDraft.targetAmount}"
                       placeholder="300000"
-                      class="font-heading font-extrabold text-3xl text-[#191c1d] bg-transparent w-full focus:outline-none tracking-tight tabular-nums"
+                      class="font-heading font-extrabold text-3xl text-[#191c1d] bg-transparent border-0 w-full focus:outline-none focus:ring-0 tracking-tight tabular-nums"
                     />
                     <span class="text-sm font-bold text-[#5d645e] font-mono">COP</span>
                   </div>
@@ -912,7 +924,7 @@ export function initCows(containerId) {
                       </span>
                     </div>
                     <div class="w-full bg-[#eae5db] h-2.5 rounded-full overflow-hidden">
-                      <div class="bg-[#4a7c59] h-full rounded-full w-[15%]"></div>
+                      <div class="bg-[#4a7c59] h-full rounded-full w-0" style="width: 0%;"></div>
                     </div>
                     <div class="flex items-center justify-between text-[11px] text-[#5d645e] tabular-nums">
                       <span>0 aportes aún</span>
@@ -964,7 +976,7 @@ export function initCows(containerId) {
                       ${
                         isSubmitting
                           ? `<span class="bank-spinner"></span><span>Creando Vaquita…</span>`
-                          : `<span>Crear Vaquita y Compartir Llave</span><span class="material-symbols-outlined text-lg transition-transform group-hover:translate-x-1">arrow_forward</span>`
+                          : `<span>Crear Vaquita</span><span class="material-symbols-outlined text-lg transition-transform group-hover:translate-x-1">arrow_forward</span>`
                       }
                     </button>
 
@@ -973,7 +985,7 @@ export function initCows(containerId) {
                       id="btnCancelCreateCow"
                       class="w-full py-3 px-4 rounded-2xl text-[#5d645e] hover:text-[#191c1d] hover:bg-[#f5f1ea] font-bold text-xs uppercase tracking-wider transition-colors text-center cursor-pointer bg-transparent border-0"
                     >
-                      Cancelar y Descartar
+                      Cancelar
                     </button>
                   </div>
                 </div>
@@ -1297,15 +1309,18 @@ export function initCows(containerId) {
           <form id="contributeForm" class="space-y-4">
             <div>
               <label class="bank-label" for="contribAmount">Monto a aportar (COP)</label>
-              <input
-                id="contribAmount"
-                class="bank-input tabular-nums text-lg"
-                type="number"
-                min="1"
-                step="any"
-                placeholder="${remaining > 0 ? remaining : 50000}"
-                required
-              />
+              <div class="relative flex items-center rounded-2xl bg-[#f5f1ea] border border-[#eae5db] px-4 py-3.5 focus-within:border-[#4a7c59] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#4a7c59]/20 transition-all">
+                <span class="font-heading font-bold text-xl text-[#4a7c59] mr-2 select-none">$</span>
+                <input
+                  id="contribAmount"
+                  class="w-full bg-transparent border-0 font-heading font-bold text-xl text-[#191c1d] focus:outline-none focus:ring-0 tabular-nums"
+                  type="number"
+                  min="1"
+                  max="${remaining > 0 ? remaining : ""}"
+                  step="any"
+                  required
+                />
+              </div>
             </div>
 
             <div class="modal-actions">
@@ -1327,8 +1342,18 @@ export function initCows(containerId) {
       e.preventDefault();
       const amount = Number(inputAmount.value);
 
+      if (remaining <= 0 || cow.status === "COMPLETED") {
+        showToast("Esta vaquita ya alcanzó el 100% de su meta y está cerrada", "warning");
+        return;
+      }
+
       if (isNaN(amount) || amount <= 0) {
         showToast("El monto debe ser estrictamente positivo", "warning");
+        return;
+      }
+
+      if (amount > remaining) {
+        showToast(`El aporte no puede superar lo que falta para la meta (${formatCOP(remaining)})`, "warning");
         return;
       }
 

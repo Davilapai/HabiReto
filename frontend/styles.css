@@ -134,7 +134,30 @@ input, textarea, select {
   caret-color: var(--color-primary);
 }
 
-:focus-visible {
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+select:focus,
+select:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Ocultar flechas nativas (spinners) en campos numéricos de montos */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+button:focus-visible,
+a:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }

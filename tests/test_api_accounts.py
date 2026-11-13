@@ -35,7 +35,7 @@ class TestApiAccounts(unittest.IsolatedAsyncioTestCase):
             json={
                 "email": "juan@test.com",
                 "full_name": "Juan Valdez",
-                "phone_number": "+573001234567",
+                "phone_number": "3001234567",
                 "initial_balance": 0,
             },
         )
@@ -55,7 +55,7 @@ class TestApiAccounts(unittest.IsolatedAsyncioTestCase):
             json={
                 "email": "diana@test.com",
                 "full_name": "Diana Morales",
-                "phone_number": "+573007654321",
+                "phone_number": "3007654321",
                 "initial_balance": 1000000,
             },
         )
@@ -71,7 +71,7 @@ class TestApiAccounts(unittest.IsolatedAsyncioTestCase):
             json={
                 "email": "pedro@test.com",
                 "full_name": "Pedro Páramo",
-                "phone_number": "+573111111111",
+                "phone_number": "3111111111",
                 "initial_balance": 0,
             },
         )
@@ -97,7 +97,7 @@ class TestApiAccounts(unittest.IsolatedAsyncioTestCase):
             json={
                 "email": "lucia@test.com",
                 "full_name": "Lucía Méndez",
-                "phone_number": "+573222222222",
+                "phone_number": "3222222222",
                 "initial_balance": 0,
             },
         )
@@ -120,7 +120,7 @@ class TestApiAccounts(unittest.IsolatedAsyncioTestCase):
             json={
                 "email": "mateo@test.com",
                 "full_name": "Mateo Rossi",
-                "phone_number": "+573333333333",
+                "phone_number": "3333333333",
                 "initial_balance": 0,
             },
         )
@@ -154,7 +154,7 @@ class TestApiAccounts(unittest.IsolatedAsyncioTestCase):
             json={
                 "email": "valeria@test.com",
                 "full_name": "Valeria Duque",
-                "phone_number": "+573444444444",
+                "phone_number": "3444444444",
                 "initial_balance": 750000,
             },
         )
@@ -184,7 +184,7 @@ class TestApiAccounts(unittest.IsolatedAsyncioTestCase):
             json={
                 "email": "esteban@test.com",
                 "full_name": "Esteban Restrepo",
-                "phone_number": "+573555555555",
+                "phone_number": "3555555555",
                 "initial_balance": 200000,
             },
         )
