@@ -1,219 +1,93 @@
-# Arquitectura de Software, Decisiones Técnicas y Defensa de Integridad Financiera
+# Arquitectura y Decisiones Técnicas — HabiReto (Vaqui)
 
-Este documento formaliza la arquitectura del sistema de transferencias P2P y fondos colaborativos ("Vacas") de **HabiCapital**, justificando de manera minuciosa cada decisión técnica, patrón de diseño, matriz de riesgos y tradeoffs adoptados en el proyecto.
-
----
-
-## 1. Alineación con los Criterios de Evaluación de HabiCapital
-
-El documento oficial del reto técnico establece premisas explícitas:
-
-> *"No estamos haciendo 'una app' para un producto existente... Es una muestra acotada del tipo de problema que resolvemos todos los días en HabiCapital: mover plata de otras personas, sin margen de error."*
->
-> *"No es un test genérico: lo diseñamos para ver cómo piensas, no qué memorizaste."*
->
-> *"La regla que no se negocia: Esto es plata. Tu sistema no puede perder un peso. Qué puede salir mal y cómo lo proteges es tu decisión. Justifícalo en el README."*
->
-> *"Entrevista: 60 minutos de pair programming sobre tu propio código, con un cambio que no anticipaste. Últimos 30 minutos: conversación sobre decisiones y tradeoffs."*
-
-Documentar minuciosamente y justificar el **por qué** detrás de cada abstracción no es un accesorio cosmético: **es el criterio central sobre el cual los ingenieros de HabiCapital evalúan el criterio técnico, la madurez arquitectónica y la capacidad de defender el código en vivo**.
+Este documento resume cómo organicé el proyecto, por qué elegí cada tecnología y cómo protegí el flujo del dinero para que no se pierda ni se duplique un solo peso.
 
 ---
 
-## 2. Visión Arquitectónica y Patrón por Capas
+## 1. Enfoque del proyecto
 
-El sistema implementa una arquitectura desacoplada inspirada en **Clean Architecture / Arquitectura Hexagonal**, separando estrictamente las reglas de integridad financiera de los mecanismos de entrega (HTTP / UI):
+El reto de HabiCapital pide construir un sistema para mover plata entre personas sin fricción, manteniendo contexto real detrás de cada movimiento y sin margen de error contable. Sobre el núcleo obligatorio (crear cuenta, recargar saldo simulado, transferir entre cuentas, consultar saldo e historial) construí **Vaqui**, que suma fondos colaborativos (**Vaquitas**) con cuentas bóveda propias, llaves cortas estilo Bre-B (`@ABC123`) y privacidad real en el servidor para colectas anónimas.
+
+Todo el código busca ser fácil de leer, probar y modificar en vivo, evitando complejidad innecesaria.
+
+---
+
+## 2. Estructura del código (Arquitectura Hexagonal en Monolito Modular)
+
+Organicé el backend siguiendo una **arquitectura hexagonal** aplicada a un monolito modular con separación clara de responsabilidades:
 
 ```mermaid
 flowchart TD
-    subgraph UI["Capa de Presentación"]
-        Web["Nginx Web Client (Vanilla JS)"]
-    end
-
-    subgraph API["Capa de Entrada y Entrega (FastAPI)"]
-        Router["API Routers (/accounts, /transfers, /cows)"]
-        Deps["Dependencies & Auth Mock (X-User-Id)"]
-        IdempMW["Idempotency Filter (SHA-256 Validation)"]
-        PrivacyProj["Privacy Projection Layer (Server-Side Masking)"]
-    end
-
-    subgraph Core["Capa de Servicios de Aplicación (Casos de Uso ACID)"]
-        AccountSvc["AccountService (Locking Ordenado)"]
-        CowSvc["CowService (Bóvedas & Transiciones de Estado)"]
-        IdempSvc["IdempotencyService (Exactly-Once Engine)"]
-    end
-
-    subgraph Domain["Capa de Dominio e Invariantes Financieras"]
-        Entities["Modelos Declarativos: User, Account, Cow, CowMember"]
-        Ledger["Double-Entry Ledger: Transaction, LedgerEntry"]
-        Constraints["Constraints Físicos SQL: Balance >= 0, Amount > 0"]
-    end
-
-    subgraph Persistence["Capa de Persistencia e Infraestructura"]
-        PG[("PostgreSQL 16 Alpine")]
-        AsyncEngine["SQLAlchemy 2.0 Async + asyncpg"]
-        Alembic["Alembic Migrations"]
-    end
-
-    Web -->|HTTP / REST + JSON| Router
-    Router --> Deps
-    Router --> IdempMW
-    Router --> PrivacyProj
-    Router --> AccountSvc
-    Router --> CowSvc
-    AccountSvc --> Entities
-    AccountSvc --> Ledger
-    CowSvc --> Entities
-    CowSvc --> Ledger
-    IdempMW --> IdempSvc
-    IdempSvc --> Entities
-    AccountSvc --> AsyncEngine
-    CowSvc --> AsyncEngine
-    IdempSvc --> AsyncEngine
-    AsyncEngine --> PG
-    Constraints -.->|Defensa Física| PG
+    Web["Frontend Vaqui (Nginx + Vanilla JS :3000)"] -->|"/api/v1/* (X-User-Id, Idempotency-Key)"| API["Capa API FastAPI (:8000)"]
+    API --> Deps["Autorización en frontera (X-User-Id) y sesión DB"]
+    API --> Idemp["IdempotencyService (SHA-256)"]
+    API --> Privacy["Filtro de privacidad en servidor (from_cow)"]
+    Deps --> Services["Servicios de aplicación (AccountService, CowService)"]
+    Services --> Models["Modelos ORM y restricciones físicas"]
+    Models --> PG[("PostgreSQL 16 Alpine<br/>FOR UPDATE + CHECK constraints")]
 ```
 
-### Principio de Flujo de Dependencias
-- Las capas externas (HTTP, FastAPI, Pydantic) dependen de los servicios del Core.
-- Los servicios del Core operan sobre las entidades de dominio y el Ledger.
-- **La integridad del dinero reside físicamente en la base de datos**; incluso si un bug elude los schemas de FastAPI o la validación en Python, PostgreSQL physically aborta la mutación.
+- **Capa API (`src/habireto/api/`):** Recibe las peticiones HTTP, valida esquemas con Pydantic, verifica quién hace la petición (`X-User-Id`), controla la idempotencia y aplica los filtros de privacidad antes de responder.
+- **Capa de Servicios (`src/habireto/services/`):** Contiene las reglas de negocio y las operaciones transaccionales (`AccountService`, `CowService`, `IdempotencyService`, `SeedService`), sin depender de HTTP.
+- **Capa de Modelos y Persistencia (`src/habireto/models/`, `alembic/`):** Define las tablas, las relaciones y las restricciones físicas en PostgreSQL.
+
+Elegí este enfoque frente a microservicios porque para el alcance del reto permite trabajar rápido, mantener las reglas financieras aisladas de la web y entender o modificar cualquier parte del flujo sin la complejidad de coordinar varios servicios separados.
 
 ---
 
-## 3. Justificación Minuciosa de Decisiones Arquitectónicas
+## 3. Decisiones principales y su justificación
 
-### 3.1. Base de Datos Relacional (PostgreSQL 16) vs NoSQL / Document DB
-- **Decisión:** PostgreSQL con aislamiento transaccional `READ COMMITTED` y bloqueos pesimistas explícitos.
-- **Justificación:**
-  - En un sistema contable que maneja fondos ajenos, las garantías **ACID reales** son mandatorias.
-  - Las bases de datos documentales (MongoDB, DynamoDB) o de consistencia eventual introducen ventanas temporales donde dos operaciones concurrentes pueden leer el mismo saldo y gastarlo simultáneamente (doble gasto).
-  - PostgreSQL provee llaves foráneas estrictas (`ON DELETE RESTRICT`), soporte nativo de UUIDs, y la capacidad de declarar `CHECK constraints` evaluados dentro del motor de base de datos.
+### 3.1. Python + FastAPI y Frontend sin frameworks pesados
+Elegí **Python** con **FastAPI** porque es un lenguaje con el que me siento muy cómodo, se lee bien y permite validar contratos de entrada y salida desde el primer momento con Pydantic. En el frontend usé HTML, Tailwind CDN y JavaScript modular servido con Nginx para invertir el mayor tiempo posible en la lógica financiera del backend en lugar de configurar empaquetadores o herramientas complejas.
 
----
+### 3.2. PostgreSQL (Relacional vs. NoSQL)
+Elegí **PostgreSQL** porque es gratuito, confiable y ofrece **transacciones ACID reales**, llaves foráneas estrictas y consistencia inmediata. Descarté una base de datos NoSQL porque en modelos pensados para consistencia eventual o sin transacciones relacionales estrictas entre varias tablas resulta mucho más riesgoso evitar lecturas desactualizadas, dobles gastos o transferencias dejadas a medias.
 
-### 3.2. Representación Monetaria: Enteros de 64 bits (`BIGINT`) para Centavos COP
-- **Decisión:** Almacenar todo valor financiero como un número entero que representa centavos de peso colombiano (`COP`). Ejemplo: `$50.000 COP` $\to$ `5.000.000` centavos.
-- **Por qué NO `FLOAT` / `DOUBLE`:**
-  - La representación binaria IEEE-754 introduce imprecisiones de coma flotante (`0.1 + 0.2 = 0.30000000000000004`). En transacciones financieras masivas, esto genera pérdidas o ganancias de fracciones de peso que descuadran el balance del libro mayor.
-- **Por qué `BIGINT` sobre `NUMERIC(18, 2)`:**
-  - Un entero de 64 bits (`BIGINT` en SQL, `int` en Python) es matemáticamente exacto, consume menos almacenamiento en disco, ofrece operaciones aritméticas a nivel de CPU órdenes de magnitud más veloces, y elimina discrepancias de redondeo entre el ORM y el dialecto SQL.
+### 3.3. Números exactos en lugar de punto flotante
+Nunca usé `float` ni `double` para representar dinero por los errores de redondeo propios de la coma flotante. PostgreSQL ofrece tipos exactos como `NUMERIC` para precisión decimal y enteros de 64 bits (`BIGINT`), que fue el que implementé en las columnas monetarias (`balance`, `amount`, `balance_after`, `target_amount`, `total_contributed`) para manejar pesos colombianos (`COP`) enteros sin decimales ni problemas de redondeo.
 
----
+### 3.4. Libro mayor de partida doble con `balance_after`
+Cada operación financiera genera un registro maestro en `transactions` y sus asientos inmutables (`DEBIT` y `CREDIT`) en `ledger_entries`. Nunca se actualizan ni se borran filas del historial: si una Vaquita se cancela, se crean transacciones nuevas de reembolso. Guardar `balance_after` en cada asiento permite consultar el historial de saldos directamente sin recalcular sumas históricas sobre toda la tabla.
 
-### 3.3. Modelo de Partida Doble (Double-Entry Ledger) con `balance_after`
-- **Decisión:** Implementar un libro mayor append-only inmutable donde cada movimiento se descompone en dos asientos atómicos (`DEBIT` y `CREDIT`) y almacena el saldo posterior (`balance_after`).
-- **Justificación:**
-  1. **Conservación de Masa Monetaria:** Todo débito tiene un crédito equivalente:
-     $$\sum \text{Débitos} = \sum \text{Créditos}$$
-  2. **Inmutabilidad Absoluta:** Jamás se ejecuta un `UPDATE` o `DELETE` sobre la tabla de transacciones o asientos. Los errores o cancelaciones se registran mediante transacciones compensatorias explícitas.
-  3. **Extractos y Auditoría en Tiempo Constante $O(1)$:**
-     - En esquemas contables ingenuos, para conocer el saldo histórico en una fecha determinada se debe ejecutar una agregación pesada (`SUM(amount) WHERE created_at <= T`).
-     - Al persistir `balance_after` en cada asiento, consultar el extracto de una cuenta o auditar su estado tras una operación es una simple lectura de índice con latencia $O(1)$.
+### 3.5. Cuentas bóveda para las Vaquitas (`COW_VAULT`)
+En lugar de guardar un campo editable `current_amount` dentro de la tabla `cows`, cada Vaquita crea automáticamente una cuenta propia de tipo `COW_VAULT` en `accounts`. Así, aportar a una Vaquita es una transferencia normal hacia la bóveda, desembolsar es transferir de la bóveda al creador, y cancelar es devolver de la bóveda a cada aportante. Toda la plata del sistema vive en el mismo lugar y bajo las mismas reglas.
 
----
+### 3.6. Bloqueos ordenados en base de datos (`SELECT ... FOR UPDATE`)
+Para evitar que dos peticiones concurrentes gasten el mismo saldo, uso bloqueos de fila en PostgreSQL (`SELECT ... FOR UPDATE`), que serializan las operaciones sobre una cuenta en lugar de depender de reintentos en el cliente como pasaría con un bloqueo optimista cuando varias personas aportan a la misma Vaquita al tiempo.
 
-### 3.4. Arquitectura de las "Vacas": Cuenta Bóveda Dedicada (`COW_VAULT`)
-- **Decisión:** Cada Vaca creada instancia automáticamente una cuenta bancaria dedicada de tipo `COW_VAULT` (`vault_account_id`).
-- **Por qué NO un campo mutable `current_amount` en la tabla `cows`:**
-  - Mantener un saldo acumulado como columna editable en la tabla de iniciativas es un antipatrón en fintech: si se actualiza la columna pero falla la escritura en el ledger (o viceversa), el saldo virtual de la Vaca deja de coincidir con el dinero real.
-  - Al otorgarle a la Vaca su propia cuenta bancaria, **un aporte a la vaca es una transferencia bancaria P2P estándar**:
-    $$\text{Cuenta Aportante} \xrightarrow{\text{Transferencia Atómica}} \text{Bóveda de la Vaca}$$
-  - Cuando la vaca se desembolsa, se transfiere de la bóveda a la cuenta del titular. Si se cancela, se reembolsa de la bóveda a cada aportante. El saldo total del sistema satisface en todo instante:
-    $$\sum \text{Balances}_{\text{cuentas}} = \text{Constante}$$
+Además, cuando una transferencia toca dos cuentas, siempre ordeno los identificadores (`UUID`) de menor a mayor antes de bloquearlas. Así, si dos personas se transfieren dinero al mismo tiempo en direcciones opuestas, ambas piden primero la cuenta menor en vez de quedarse bloqueadas esperando una por la otra.
+
+### 3.7. Doble verificación (Python + Base de Datos)
+Todas las reglas críticas se validan en dos capas: primero en Python (Pydantic rechaza montos menores o iguales a cero, los endpoints revisan que `X-User-Id` sea dueño de la cuenta origen y los servicios verifican saldo suficiente) y luego físicamente en PostgreSQL mediante restricciones `CHECK` (`balance >= 0`, `amount > 0`, `balance_after >= 0`, etc.). Incluso si hubiera un bug en Python, la base de datos rechaza saldos negativos.
+
+### 3.8. Privacidad en el servidor para Vaquitas anónimas
+En una Vaquita marcada como `ANONYMOUS`, ocultar los aportes individuales solo en el navegador no sirve porque cualquiera puede inspeccionar la respuesta de red en DevTools. Por eso el filtrado ocurre en el backend (`CowDetailResponse.from_cow`): los montos de terceros viajan explícitamente como `null` (incluso para quien creó la Vaquita) y la lista de invitados solo se muestra al creador. Internamente, la base de datos sí conserva la trazabilidad contable completa de cada movimiento.
+
+### 3.9. Idempotencia en operaciones que mueven dinero
+Para evitar cobros dobles cuando un cliente reintenta una petición por un fallo o timeout de red, las operaciones mutantes aceptan la cabecera `Idempotency-Key`. El backend guarda el resumen SHA-256 de la petición junto con la respuesta en `idempotency_records` (además de `UNIQUE(idempotency_key)` en `transactions`): si llega el mismo payload con la misma clave, devuelve la respuesta guardada; si cambia el contenido reutilizando la misma clave, responde `HTTP 409 Conflict`.
+
+### 3.10. Migraciones con Alembic
+El esquema inicial está versionado en `alembic/versions/001_initial_schema.py` con soporte asíncrono para `asyncpg`, lo que permite rastrear cambios de tablas y restricciones físicas de forma ordenada y reversible (`upgrade` / `downgrade`).
 
 ---
 
-### 3.5. Control de Concurrencia: Bloqueo Pesimista Ordenado vs Optimistic Locking
-- **Decisión:** Utilizar `SELECT ... FOR UPDATE` ordenando la adquisición de bloqueos por identificador de cuenta (`id_1 < id_2`).
-- **Por qué NO Bloqueo Optimista (`version_id`):**
-  - El bloqueo optimista asume que los conflictos son raros. En escenarios de alta concurrencia (ej. 20 amigos aportando a la misma vaca al mismo tiempo o una cuenta recibiendo transferencias simultáneas), el bloqueo optimista rechaza la mayoría de las peticiones con excepciones de colisión de versión, obligando al cliente a reintentar y degradando la experiencia de usuario y la red.
-- **Por qué el Ordenamiento Estricto previene Deadlocks:**
-  - Si el usuario $A$ transfiere a $B$ y al mismo milisegundo $B$ transfiere a $A$:
-    - Hilo 1: Bloquea $A$ y solicita $B$.
-    - Hilo 2: Bloquea $B$ y solicita $A$.
-    - Resultado sin ordenamiento: **Deadlock circular** detectado por el motor relacional (`deadlock_detected`), abortando una transacción.
-  - Al forzar que **siempre se bloquee primero el UUID con menor valor lexicográfico**:
-    - Ambos hilos intentan bloquear primero la cuenta con menor ID. Uno gana el lock y el otro espera en cola sin generar ciclos. **Se erradica matemáticamente la posibilidad de deadlock**.
+## 4. Qué puede salir mal y cómo está cubierto
+
+| Escenario | Qué podría pasar | Cómo se protege |
+| :--- | :--- | :--- |
+| **Sobregiro concurrente** | Dos transferencias simultáneas intentan gastar el mismo saldo. | `SELECT ... FOR UPDATE` serializa el acceso, Python verifica fondos y PostgreSQL impone `CHECK (balance >= 0)`. |
+| **Bloqueo cruzado (deadlock)** | Dos cuentas se transfieren mutuamente al mismo tiempo. | Los bloqueos se adquieren siempre en orden ascendente por `UUID`. |
+| **Reintento tras timeout** | El cliente repite una transferencia que ya se ejecutó. | `Idempotency-Key` + SHA-256 devuelve la respuesta original sin duplicar el débito. |
+| **Falla a mitad de operación** | Ocurre un error tras debitar la cuenta origen pero antes de acreditar el destino. | Todo el endpoint corre dentro de una única transacción (`session.begin()`) que hace `ROLLBACK` completo ante cualquier excepción. |
+| **Fuga de datos en Vaquita anónima** | Un participante o el creador inspecciona la respuesta HTTP para ver aportes ajenos. | El backend envía `null` en los montos de terceros y oculta `members` a los demás participantes. |
 
 ---
 
-### 3.6. Privacidad Resuelta en el Servidor (Server-Side Masking)
-- **Decisión:** En Vacas Anónimas (`ANONYMOUS`), la anonimización de los montos individuales se ejecuta en el backend antes de serializar el JSON de respuesta.
-- **Justificación:**
-  - **Falsa Privacidad en el Cliente:** Si el backend envía los montos individuales en el payload JSON y delega en el frontend de JavaScript la tarea de "ocultarlos con CSS", cualquier participante puede abrir las herramientas de desarrollador del navegador (DevTools / Network Tab) e inspeccionar los aportes de los demás.
-  - **Anonimato para Todos (Incluyendo al Creador):** Para cumplir rigurosamente el propósito de una Vaca Privada (evitar presión social en colectas familiares, regalos compartidos o donaciones), **ni siquiera el titular/administrador de la vaca recibe los montos individuales ajenos**. El servidor evalúa:
-    ```python
-    if cow.visibility_type == CowVisibilityType.ANONYMOUS:
-        # El monto individual solo se expone al propio usuario aportante
-        monto_visible = m.total_contributed if m.user_id == current_user.id else None
-    ```
+## 5. Documentos por fase
 
----
-
-### 3.7. Idempotencia Distribuida con Hash Criptográfico SHA-256
-- **Decisión:** Toda mutación financiera requiere o genera una clave de idempotencia validada en la tabla `idempotency_records`.
-- **Justificación:**
-  - En redes móviles o conexiones inestables, un cliente puede enviar una transferencia, el servidor la procesa con éxito, pero la respuesta HTTP 200 se pierde en el camino debido a un timeout. El cliente reintenta enviar la petición.
-  - Sin idempotencia, el usuario sufriría un **doble débito**.
-  - Al recibir una clave `Idempotency-Key` ya registrada, el servidor valida el hash SHA-256 del cuerpo de la petición:
-    - Si el hash coincide: Retorna inmediatamente la respuesta HTTP original en caché sin tocar el libro mayor.
-    - Si el hash difiere (misma clave pero distinto monto o destinatario): Rechaza la solicitud con HTTP 409 (Conflict) para prevenir colisiones o ataques de manipulación.
-
----
-
-### 3.8. Ciclo de Vida del DDL: Adopción de Alembic para Migraciones Asíncronas
-- **Decisión:** Utilizar Alembic en modo asíncrono (`asyncpg`) leyendo la metadata centralizada desde `Base.metadata`.
-- **Por qué NO `Base.metadata.create_all()` ni scripts `.sql` manuales:**
-  - `create_all()` no altera esquemas existentes, no modifica tipos de columnas, no actualiza índices ni permite operaciones reversibles (`downgrade()`).
-  - Los scripts `.sql` manuales carecen de control de versiones atómico, provocan *schema drift* entre ambientes y no dejan registro en la tabla `alembic_version`.
-  - Alembic garantiza trazabilidad estricta de cada cambio sobre el catálogo relacional en el historial de Git, requerimiento obligatorio para auditorías de grado bancario (SOC 2, ISO 27001).
-
----
-
-### 3.9. Trazabilidad Legal y Auditoría Regulatoria en Fondos Colaborativos (SARLAFT / DIAN)
-- **Decisión:** Todo movimiento financiero hacia o desde una Vaca es una transacción bancaria real inmutable con partida doble, independientemente de la política de visibilidad.
-- **Justificación:**
-  - En Vacas Anónimas (`ANONYMOUS`), la anonimización es **estrictamente una máscara en la capa de presentación (UI)** para eliminar la presión social entre pares.
-  - **A nivel contable y regulatorio (SARLAFT, Superfinanciera, DIAN), la transacción nunca es anónima**: la base de datos registra de manera obligatoria e inmutable el `user_id` del aportante, el número de cuenta origen, la cuenta bóveda receptora (`COW_VAULT`), el monto en centavos y la marca temporal certificada. La pista de auditoría forense es completa y verificable en cualquier instante.
-
----
-
-## 4. Matriz de Riesgos y Modos de Falla
-
-| Riesgo / Escenario de Falla | Qué puede salir mal | Cómo lo protege la Arquitectura | Evidencia Verificable |
-| :--- | :--- | :--- | :--- |
-| **Giro en descubierto (Overdraft)** | Dos débitos concurrentes que superan el saldo disponible. | 1. Bloqueo pesimista `FOR UPDATE` serializa la lectura y deducción.<br>2. Constraint físico `CHECK (balance >= 0)` en PostgreSQL. | Test de 50 peticiones concurrentes: solo pasan las que cubre el saldo; el resto falla limpiamente con HTTP 422. |
-| **Deadlock en transferencias bidireccionales** | Dos cuentas transfiriéndose dinero mutuamente en el mismo milisegundo. | Adquisición ordenada de locks por UUID ascendente (`first_id < second_id`). | Test de estrés con 50 transferencias cruzadas simultáneas: 0 errores de deadlock. |
-| **Reintentos por timeout de red** | El cliente reintenta una transferencia ya ejecutada, debitando dos veces. | Tabla `idempotency_records` con hash SHA-256 que retorna la respuesta en caché. | Test de envío duplicado con la misma `Idempotency-Key`: solo se registra 1 transacción en el Ledger. |
-| **Falla a mitad de transferencia** | El proceso se cae o se pierde la conexión tras debitar la cuenta origen pero antes de acreditar la cuenta destino. | Transacción de base de datos ACID (`BEGIN ... COMMIT`). Si falla un paso, PostgreSQL ejecuta `ROLLBACK` total. | Test de inyección de error mid-transaction: saldo origen y destino permanecen intactos. |
-| **Fuga de datos en Vacas Anónimas** | Miembros o creador descubren cuánto aportó un participante ajeno. | Serialización Pydantic en el backend asigna `amount = None` a montos de terceros. | Test de API: aserción estricta de que el payload JSON carece de montos individuales ajenos. |
-
-
-## 5. Documentación Detallada de la Fase 1: Servicios Transaccionales y Migraciones
-
-Para un análisis formal y matemático de la prevención de deadlocks por ordenamiento lexicográfico, la deduplicación con SHA-256 y la arquitectura contable de las cuentas bóveda, consultar el documento complementario:
-👉 **[Decisiones Técnicas, Integridad Financiera y Prevención de Deadlocks — Fase 1](FASE1_DECISIONES.md)**
-
----
-
-## 6. Documentación Detallada de la Fase 2: Capa API, Autenticación Mock y Serialización de Privacidad
-
-Para la demostración matemática de cero fugas de información (*Zero Mutual Information*), el ciclo de vida de transacciones limpias (`get_db_session`), la deduplicación criptográfica de idempotencia y el arnés de pruebas ASGI en memoria, consultar el documento complementario:
-👉 **[Decisiones Técnicas, Capa API y Serialización de Privacidad — Fase 2](FASE2_DECISIONES.md)**
-
----
-
-## 7. Documentación Detallada de la Fase 3: Pruebas de Estrés y Consistencia Financiera
-
-Para las demostraciones matemáticas del teorema de conservación de masa monetaria, la erradicación determinista de interbloqueos bajo el teorema de aciclicidad de Coffman y los resultados experimentales de estrés concurrente, consultar el documento complementario:
-👉 **[Decisiones Técnicas, Pruebas de Estrés y Consistencia Financiera — Fase 3](FASE3_DECISIONES.md)**
-
----
-
-## 8. Documentación Detallada de la Fase 4: Frontend Modern Digital Banking y Flujo de Demostración
-
-Para la arquitectura del frontend en Vanilla ES Modules servido por Nginx, el lenguaje visual Modern Digital Banking (Swiss Design), la corrección del proxy inverso, el sembrado determinista en lifespan y el guion técnico cronometrado de 5 minutos, consultar el documento complementario:
-👉 **[Decisiones Técnicas, Frontend Modern Digital Banking y Demostración — Fase 4](FASE4_DECISIONES.md)**
-
-
+- [DATA_MODEL.md](DATA_MODEL.md) — Tablas, relaciones y restricciones físicas.
+- [FASE1_DECISIONES.md](FASE1_DECISIONES.md) — Bloqueos ordenados, bóvedas `COW_VAULT`, libro mayor y Alembic.
+- [FASE2_DECISIONES.md](FASE2_DECISIONES.md) — Capa API, `X-User-Id`, privacidad en servidor, idempotencia y cliente ASGI.
+- [FASE3_DECISIONES.md](FASE3_DECISIONES.md) — Pruebas de concurrencia, conservación de dinero y simulador en memoria.
+- [FASE4_DECISIONES.md](FASE4_DECISIONES.md) — Frontend Vaqui (Terra), llaves `@ABC123`, proxy Nginx y semillado demo.
+- [AI_WORKFLOW.md](AI_WORKFLOW.md) — Flujo de trabajo y herramientas usadas con IA.

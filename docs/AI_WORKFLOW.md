@@ -192,49 +192,40 @@ Esto evita convertir AGENTS.md en un documento excesivamente extenso y permite m
 
 Mi criterio es utilizar estas instrucciones de manera selectiva: no todas las tareas necesitan consultar el grafo, investigar documentación externa o ejecutar análisis semánticos.
 
-El agente debe elegir las herramientas en función del problema que está resolviendo.
+El agente debe elegir que herramientas utilizar en función del problema que está resolviendo.
 
 ---
 
-## 9. Cómo pretendo utilizar este entorno
+## 9. Cómo dividí el trabajo en 5 fases
 
-La configuración no tiene valor si no se traduce en una metodología de trabajo.
+Toda la configuración anterior me sirvió para trabajar por etapas claras, sin mezclar todo al mismo tiempo y sabiendo qué resultado concreto quería dejar listo antes de pasar a la siguiente fase.
 
-Para este reto, quiero seguir un flujo similar al siguiente:
+### Fase 1: Base de datos y lógica principal del dinero
 
-### Fase 1. Comprensión
+Antes de pensar en pantallas o rutas web, empecé por el corazón del sistema. En esta etapa definí las tablas principales en PostgreSQL y programé las reglas base para mover dinero: crear usuarios con su cuenta en pesos colombianos sin usar decimales con coma flotante, hacer recargas simuladas, ejecutar transferencias cuidando que dos peticiones simultáneas no gasten el mismo saldo ni se bloqueen entre sí, darle a cada Vaquita su propia cuenta bóveda para guardar el dinero por separado, mantener el historial sin borrar ni editar movimientos viejos y evitar cobros repetidos si una petición se reintenta por error de red.
 
-- Analizar los requisitos del reto.
-- Identificar restricciones y supuestos.
-- Consultar el estado del proyecto.
-- Investigar documentación cuando sea necesario.
-- Identificar riesgos técnicos y financieros.
+- **Producto listo al terminar la fase:** El motor financiero funcionando por dentro y la base de datos bien armada, capaz de mover y cuidar la plata de forma segura aunque todavía no tuviera endpoints web ni interfaz visual.
 
-### Fase 2. Diseño
+### Fase 2: Rutas de la API y reglas de privacidad
 
-- Evaluar alternativas arquitectónicas con ayuda de la IA.
-- Comparar ventajas y desventajas.
-- Definir contratos e interfaces.
-- Identificar escenarios de fallo.
-- Tomar personalmente las decisiones finales.
+Con la lógica interna resuelta, el siguiente paso fue abrirla hacia afuera con FastAPI para poder usarla desde peticiones HTTP. Aquí armé las rutas para crear y consultar usuarios, cuentas, recargas, transferencias y Vaquitas, asegurándome de que cada operación se guarde completa o se deshaga por completo si algo falla. También implementé aquí la privacidad de las Vaquitas anónimas directamente en el servidor para que la información oculta nunca salga hacia el navegador, junto con validaciones claras de entrada (como el formato de celular colombiano y correos únicos) y llaves cortas estilo `@ABC123` para no depender de identificadores largos.
 
-### Fase 3. Implementación
+- **Producto listo al terminar la fase:** Una API funcional y navegable, con validaciones claras, mensajes de error limpios y privacidad protegida desde el servidor.
 
-- Dividir el trabajo en tareas pequeñas.
-- Pedir a la IA implementaciones acotadas.
-- Revisar los cambios antes de continuar.
-- Aprovechar Serena y Graphify cuando exista código suficiente.
-- Evitar dependencias y abstracciones injustificadas.
+### Fase 3: Pruebas de estrés y casos límite
 
-### Fase 4. Validación
+Antes de pasar a lo visual quería estar tranquilo de que el sistema resistía los escenarios donde normalmente aparecen fallos con dinero. Armé pruebas automatizadas simulando decenas de operaciones al mismo tiempo: intentar gastar más saldo del disponible con ráfagas paralelas, cruzar transferencias al mismo instante entre dos cuentas, mezclar movimientos entre usuarios y Vaquitas para confirmar que la suma total de dinero no cambie por ningún motivo, e inyectar un fallo a mitad de una transferencia para verificar que todo vuelva atrás sin dejar saldos ni registros rotos.
 
-- Ejecutar pruebas relevantes.
-- Utilizar Pyright para código Python.
-- Verificar contratos e invariantes.
-- Investigar errores con documentación cuando sea necesario.
-- No aceptar como evidencia una afirmación del propio agente.
+- **Producto listo al terminar la fase:** Una batería completa de pruebas automatizadas y revisión de tipos que demuestra con resultados reales que el sistema no pierde ni duplica un peso bajo presión.
 
-### Fase 5. Revisión
+### Fase 4: Interfaz web ("Vaqui") y arranque con Docker
 
-- Evaluar los cambios desde una perspectiva de arquitectura.
-- Revisar
+Aunque el reto no exigía construir una interfaz gráfica, decidí hacerla porque así es mucho más fácil ver y comprobar en tiempo real cómo funciona todo el producto. Construí una web sencilla llamada *Vaqui* con una portada para entrar usando llave corta o crear cuenta, un panel principal con saldo en pesos colombianos, recargas rápidas, transferencias por llave, historial de movimientos y el módulo completo de Vaquitas públicas y anónimas. Al final conecté la base de datos, el backend y el servidor web dentro de Docker Compose para que cualquiera pueda levantarlo sin configuraciones complicadas.
+
+- **Producto listo al terminar la fase:** La aplicación completa corriendo con un solo comando (`docker compose up`), lista para probar todo el flujo en el navegador de principio a fin y mostrarlo en vivo.
+
+### Fase 5: Documentación y cierre del entregable
+
+En la última etapa me concentré en explicar el proyecto con claridad y sin relleno. Redacté el [README.md](../README.md) respondiendo con honestidad los 8 puntos del reto (por qué tomé cada decisión, cómo probé que no se pierde dinero, qué dejé por fuera, qué cambiaría con más tiempo, qué cosas todavía no sé, qué supuestos asumí, cómo trabajé con la IA y qué aprendí), junto con la documentación de apoyo en `docs/` y una guía práctica para grabar el video de demostración.
+
+- **Producto listo al terminar la fase:** Un repositorio ordenado, fácil de entender y bien respaldado para entregarlo y defenderlo con seguridad en la entrevista técnica.

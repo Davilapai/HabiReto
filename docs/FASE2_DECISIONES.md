@@ -1,177 +1,67 @@
-# Decisiones Técnicas, Capa API y Serialización de Privacidad — Fase 2
+# Fase 2: Privacidad en Vaquitas, Sesión Transaccional y API
 
-Este documento formaliza detalladamente las decisiones de diseño, modelos de seguridad de datos, principios de aislamiento transaccional y análisis de compensaciones (*trade-offs*) adoptados en la **Fase 2 (Capa API REST, Autenticación Mock y Serialización de Privacidad con FastAPI)** de **HabiReto**.
+En la segunda etapa conecté el núcleo financiero con los endpoints HTTP de FastAPI y resolví uno de los requisitos más delicados del reto: **que la privacidad de las Vaquitas anónimas se garantice desde el servidor y no ocultando datos en el frontend**.
 
 ---
 
-## 1. Serialización Estricta de Privacidad en Servidor vs. Ocultamiento en Cliente (Zero-Trust Data Leaks)
+## 1. Privacidad Zero-Trust en Vaquitas (`PUBLIC` vs `ANONYMOUS`)
 
-### 1.1. La Falacia del "Ocultamiento Cosmético" en el Frontend
-En aplicaciones convencionales o prototipos apresurados, es común delegar la privacidad de datos a la capa visual:
-```javascript
-// ANTIPATRÓN CRÍTICO DE SEGURIDAD (Filtrado en el Cliente):
-// El backend envía el objeto completo con todos los aportes al navegador:
-// { user_id: "...", full_name: "Ana", amount_contributed: 300000 }
-// Y la UI decide qué renderizar:
-{cow.is_anonymous ? "Aporte Secreto" : `$${member.amount_contributed}`}
-```
+En muchas aplicaciones, cuando quieren hacer algo "anónimo" o "privado", el backend devuelve toda la lista completa en JSON y simplemente el frontend no la dibuja en pantalla. El problema es que cualquier persona abre las DevTools del navegador (pestaña Network) y ve exactamente quién aportó y cuánto puso.
 
-Este enfoque representa una **vulnerabilidad crítica de fuga de información (Information Disclosure)**:
-1. **Exposición en Tránsito y Memoria del Cliente:** Todo payload recibido por el cliente HTTP viaja por la red y queda disponible en las herramientas de desarrollo (*DevTools -> Network Tab*), extensiones del navegador y proxies de interceptación (Burp Suite, Proxyman, Charles).
-2. **Desprotección ante Clientes Alternativos:** Si un atacante o usuario curioso consulta la API REST directamente vía `curl`, Postman o inspecciona el objeto DOM, tiene acceso inmediato al valor exacto que aportó cada participante, destruyendo el anonimato.
-3. **Violación de Principios de Privacidad por Diseño (Privacy by Design):** Si el servidor no debe divulgar un dato confidencial a un rol determinado, dicho dato **jamás debe cruzar la frontera de la red**.
-
-### 1.2. Demostración Matemática y Modelo de Seguridad (Zero-Trust)
-Sea $\mathcal{M} = \{m_1, m_2, \dots, m_k\}$ el conjunto de miembros participantes en una Vaca $V$, donde cada miembro $m_i$ posee una tupla de atributos:
-$$m_i = \langle u_i, n_i, r_i, a_i \rangle$$
-- $u_i \in \text{UUID}$: Identificador del usuario.
-- $n_i \in \text{String}$: Nombre público o razón social.
-- $r_i \in \{\text{CREATOR}, \text{CONTRIBUTOR}\}$: Rol operativo.
-- $a_i \in \mathbb{N}$: Monto total aportado en centavos COP.
-
-Sea $u_{\text{req}}$ el identificador del usuario que ejecuta la petición HTTP `GET /api/v1/cows/{id}`.
-
-Definimos la función de proyección y serialización en el servidor $\mathcal{S}(m_i, V, u_{\text{req}})$ sobre el campo de aporte $a_i$:
-
-$$\mathcal{S}(a_i) = \begin{cases} 
-a_i & \text{si } V.\text{visibility\_type} = \text{PUBLIC} \\ 
-a_i & \text{si } V.\text{visibility\_type} = \text{ANONYMOUS} \land u_i = u_{\text{req}} \\ 
-\mathbf{None} & \text{si } V.\text{visibility\_type} = \text{ANONYMOUS} \land u_i \neq u_{\text{req}} 
-\end{cases}$$
-
-#### Teorema de Cero Fuga de Información (*Zero Mutual Information*):
-> *Bajo la función de proyección $\mathcal{S}$, la información mutua entre el payload JSON entregado al cliente $\mathcal{P}$ y el aporte real de un tercero $a_j$ ($j \neq \text{req}$) en una Vaca Anónima es estrictamente cero:*
-> $$I(\mathcal{P}; a_j) = 0 \quad \forall j \neq \text{req}$$
-
-**Demostración:**
-En el payload JSON serializado para todo miembro ajeno $j \neq \text{req}$, el valor enviado es la constante nula (`null`).
-Dado que `null` es invariable e independiente del valor escalar $a_j \in \mathbb{N}$, la distribución condicional satisface:
-$$P(\mathcal{P}_j = \text{null} \mid a_j = x) = 1 \quad \forall x$$
-Por lo tanto:
-$$H(\mathcal{P}_j \mid a_j) = H(\mathcal{P}_j) = 0 \implies I(\mathcal{P}_j; a_j) = H(\mathcal{P}_j) - H(\mathcal{P}_j \mid a_j) = 0$$
-Es matemáticamente imposible que un usuario (incluyendo de forma innegociable al creador de la vaca) deduzca o filtre el aporte individual de otro miembro a partir del payload de la respuesta HTTP.
+Para evitar esa fuga de datos, implementé el filtro directamente al construir la respuesta en `CowDetailResponse.from_cow` (en [schemas/cow.py](../src/habireto/schemas/cow.py)), aplicando reglas distintas según el tipo de Vaquita y quién hace la consulta:
 
 ```mermaid
 flowchart TD
-    subgraph ServidorBackend ["Servidor Backend (FastAPI / CowDetailResponse.from_cow)"]
-        DB[(PostgreSQL)] -->|Datos Brutos: Miembros con Aportes| CowModel["Entidad Cow"]
-        CowModel --> EvalVis{"¿Vaca Pública o Anónima?"}
-        
-        EvalVis -->|PUBLIC| PubView["amount_contributed = member.total_contributed<br/>(Para todos)"]
-        EvalVis -->|ANONYMOUS| CheckUser{"¿member.user_id == requesting_user_id?"}
-        
-        CheckUser -->|SÍ: Es el propio usuario| OwnView["amount_contributed = member.total_contributed"]
-        CheckUser -->|NO: Es un tercero o el Creador| MaskView["amount_contributed = None (null)"]
-    end
+    REQ["Petición GET /api/v1/cows/{id}<br/>(con header X-User-Id)"] --> MEM{"¿El usuario es creador<br/>o invitado de esta Vaquita?"}
+    MEM -- "No" --> ERR["403 Forbidden"]
+    MEM -- "Sí" --> TYPE{"Visibilidad de la Vaquita"}
 
-    subgraph RedCliente ["Límite de Red y Cliente"]
-        PubView -->|JSON Seguro| ClientPub["Cliente: Ve lista con montos públicos"]
-        OwnView -->|JSON Seguro| ClientAnon["Cliente: Ve SU propio monto"]
-        MaskView -->|JSON Seguro| ClientAnon
-    end
+    TYPE -- "PUBLIC" --> PUB_ROLE{"¿Es el creador?"}
+    PUB_ROLE -- "Sí" --> PUB_C["Ve a todos los invitados (incluso 0 COP)<br/>+ historial con nombres visibles"]
+    PUB_ROLE -- "No (invitado)" --> PUB_I["Ve solo a quienes ya aportaron (> 0 COP)<br/>+ historial con nombres visibles"]
+
+    TYPE -- "ANONYMOUS" --> ANON_ROLE{"¿Es el creador?"}
+    ANON_ROLE -- "Sí" --> ANON_C["Ve lista de invitados con montos de terceros en null<br/>(solo ve su propio aporte si aportó)<br/>+ historial con contributor_name = null"]
+    ANON_ROLE -- "No (invitado)" --> ANON_I["Recibe members = []<br/>+ historial con contributor_name = null"]
 ```
 
----
+### Detalle de qué recibe cada rol
 
-## 2. Inyección de Transacciones Limpias vía Dependencia (`get_db_session`)
+- **En una Vaquita pública (`PUBLIC`):**
+  - El **creador** ve la lista completa de invitados (incluyendo quiénes todavía llevan `0 COP` porque aún no aportan) y los nombres en el historial de contribuciones.
+  - Un **invitado** ve únicamente a los miembros que ya aportaron más de `0 COP` y el historial con sus nombres.
+- **En una Vaquita anónima (`ANONYMOUS`):**
+  - El **creador** puede ver a quién invitó a la Vaquita, pero el campo `amount_contributed` de los demás participantes llega explícitamente en `null` (solo ve su propio aporte si participó), y cada movimiento en `contributions` trae `contributor_name = null`.
+  - Un **invitado** recibe `members = []` y el listado de aportes también con `contributor_name = null`. Así sabe cuánto dinero lleva recaudado la Vaquita en total, pero no puede deducir quién puso cada monto ni quién ha faltado por aportar.
 
-### 2.1. El Antipatrón de Commits Manuales Dispersos
-En muchas arquitecturas, los controladores o servicios ejecutan llamadas arbitrarias a `await session.commit()` o `await session.rollback()`.
-Este patrón presenta serios inconvenientes:
-1. **Falta de Atomicidad en Casos de Uso Complejos:** Si un endpoint involucra dos pasos (ej. crear registro de auditoría y luego transferir fondos) y el commit se ejecuta en el paso intermedio, una falla posterior deja la base de datos en un estado inconsistente (*inconsistencia parcial*).
-2. **Contaminación de la Capa de Servicios:** Acoplar la gestión del commit a los servicios impide componer múltiples operaciones dentro de una misma transacción mayor.
-
-### 2.2. La Solución Adoptada: Ciclo de Vida Transaccional por Petición HTTP
-En `src/habireto/api/deps.py`, la dependencia `get_db_session` se implementa mediante un generador asíncrono con el gestor transaccional nativo de SQLAlchemy 2.0:
-
-```python
-async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSessionLocal() as session:
-        async with session.begin():
-            yield session
-```
-
-#### Propiedades Garantizadas:
-1. **Transacción Única y Delimitada (Unit of Work):** Al iniciar la atención de la ruta HTTP, SQLAlchemy emite automáticamente un `BEGIN`. Todos los servicios invocados durante la petición operan sobre la misma transacción mediante `session.flush()`.
-2. **Commit Atómico al Concluir con Éxito:** Si el controlador de la ruta retorna su respuesta normalmente sin excepciones no controladas, el context manager ejecuta un único `COMMIT` atómico.
-3. **Rollback Automático ante Cualquier Falla:** Si durante la ejecución ocurre una excepción de dominio (`InsufficientFundsError`, `UnauthorizedError`) o un fallo de infraestructura, el bloque `async with session.begin()` intercepta la salida anormal y ejecuta un `ROLLBACK` total en PostgreSQL. Ninguna mutación parcial queda persistida.
+De esta forma, aunque alguien inspeccione la respuesta cruda del servidor en el navegador, la información sensible ni siquiera sale de la API.
 
 ---
 
-## 3. Autorización en Frontera mediante Identidad Mock (`X-User-Id`)
+## 2. Identidad por header (`X-User-Id`) y llaves cortas (`@ABC123`)
 
-### 3.1. Justificación de Alcance (Scope Guard)
-El reto técnico de HabiCapital exige enfocar el tiempo y la excelencia técnica en la **integridad financiera y la prevención de fraudes y colisiones concurrentes**.
-Implementar flujos completos de OAuth2, JWT con refresh tokens, hashing de contraseñas con bcrypt y correos de activación añade centenares de líneas de código y dependencias auxiliares que distraen del núcleo bancario y no aportan valor a la evaluación de pair programming.
+Para mantener el foco del reto en el núcleo financiero y no perder tiempo construyendo flujos completos de OAuth2, correos de recuperación o JWT con refresh tokens, la API identifica al usuario activo mediante el encabezado `X-User-Id` resuelto en `get_current_user_id` (en [deps.py](../src/habireto/api/deps.py)).
 
-Por ello, se adoptó **autenticación mock determinista** mediante la cabecera HTTP estándar:
-`X-User-Id: <UUIDv4>`
+Sobre esa base agregué dos comodidades pensadas para probar y usar la app sin fricción:
 
-### 3.2. Verificación Estricta en el Perímetro (Perimeter Boundary Authorization)
-Un error habitual en sistemas financieros incipientes es confiar en los identificadores enviados en el cuerpo JSON de la petición:
-```json
-// PAYLOAD MALICIOSO:
-POST /api/v1/transfers
-{
-  "source_account_id": "cuenta-de-otra-persona-uuid",
-  "destination_account_id": "mi-cuenta-uuid",
-  "amount": 500000
-}
-```
-
-En **HabiReto**, la capa API impone una **aduana de autorización perimetral innegociable**:
-1. El endpoint extrae la identidad verificada `current_user_id` desde la cabecera `X-User-Id`.
-2. Antes de invocar al servicio de transferencias, se consulta la cuenta de origen:
-   ```python
-   source_acc = await AccountService.get_account_by_id(session, payload.source_account_id)
-   if source_acc.user_id != current_user_id:
-       raise UnauthorizedError("No está autorizado para transferir fondos desde una cuenta ajena.")
-   ```
-3. Si un usuario intenta operar o consultar saldo/extractos de una cuenta que no le pertenece, la petición es abortada inmediatamente con código `HTTP 403 Forbidden` antes de adquirir bloqueos en la base de datos.
+- **Llaves legibles tipo `@ABC123`:** En [schemas/user.py](../src/habireto/schemas/user.py), `compute_user_key` asigna una llave corta a cada usuario (por ejemplo `@ALI111`, `@BOB222` y `@CHA333` para los usuarios demo). Así nadie tiene que copiar y pegar un UUID de 36 caracteres para hacer una transferencia o invitar a una Vaquita.
+- **Autorización estricta en backend:** Aunque el cliente mande un `X-User-Id`, todos los servicios validan que esa persona realmente sea dueña de la cuenta origen antes de debitar dinero o tenga rol de creador antes de cerrar, desembolsar o cancelar una Vaquita.
 
 ---
 
-## 4. Deduplicación Criptográfica en la Capa API (Idempotency-Key)
+## 3. Una sola transacción por petición HTTP (`get_db_session`)
 
-### 4.1. El Reto de las Mutaciones Financieras en Redes Inciertas
-En transferencias electrónicas, los errores de red durante el viaje de retorno (el débito se ejecutó en la base de datos pero el cliente recibió un `HTTP 504 Gateway Timeout`) suelen provocar que las aplicaciones móviles o clientes web reintenten la petición de forma automática.
-Sin control de idempotencia, el segundo intento debitaría nuevamente los fondos, generando pérdida de dinero para el usuario.
+Una duda importante al conectar FastAPI con SQLAlchemy asíncrono es dónde abrir y cerrar las transacciones. Si cada servicio hiciera `commit()` por su cuenta, una operación compuesta podría guardar la mitad de los cambios y fallar en la otra mitad.
 
-### 4.2. Protocolo Criptográfico de Deduplicación
-Para cada petición mutante (`POST /api/v1/transfers`, `POST /api/v1/accounts/{id}/load`, `POST /api/v1/cows/{id}/contributions`) que incluya la cabecera `Idempotency-Key`:
+En [deps.py](../src/habireto/api/deps.py), la dependencia `get_db_session` abre una sola sesión y una sola transacción (`async with session.begin(): yield session`) para todo el ciclo de la petición HTTP:
 
-1. **Cálculo Canónico de Resumen SHA-256:**
-   El cuerpo de la petición se normaliza y se obtiene su hash determinista:
-   $$H = \text{SHA-256}(\text{CanonicalJSON}(\text{payload}))$$
-2. **Evaluación de Estado en `IdempotencyService.check_or_start`:**
-   - **Caso 1: Clave Nueva:** La operación continúa normalmente hacia los servicios ACID. Al culminar, se almacena en la tabla `idempotency_records` la tupla $\langle \text{key}, u_{\text{req}}, \text{path}, H, \text{status}, \text{response\_body} \rangle$.
-   - **Caso 2: Reintento Idéntico ($H_{\text{previo}} = H_{\text{actual}}$):** Se intercepta la ejecución antes de tocar las cuentas. Se sirve de forma inmediata la respuesta almacenada en caché con el mismo código HTTP (200 o 201), garantizando semántica **Exactly-Once**.
-   - **Caso 3: Conflicto Malicioso ($H_{\text{previo}} \neq H_{\text{actual}}$):** Un cliente intenta reutilizar la misma clave de idempotencia enviando montos o cuentas diferentes. Se lanza `IdempotencyConflictError`, traduciéndose en `HTTP 409 Conflict` para abortar el intento de fraude.
+- Si el endpoint termina bien, SQLAlchemy hace `commit` automático al salir.
+- Si se lanza cualquier excepción de negocio o error inesperado, hace `rollback` completo de forma automática y los manejadores de errores traducen la falla a un mensaje limpio (`400`, `403`, `404`, `409`, etc.) sin filtrar trazas internas ni detalles de la base de datos.
 
 ---
 
-## 5. Harness de Pruebas ASGI en Memoria de Cero Dependencias
+## 4. Pruebas reales sin levantar servidor aparte (`tests/asgi_client.py`)
 
-### 5.1. Decisión Ponytail vs. Dependencias Pesadas
-Para probar endpoints de FastAPI, la documentación oficial suele recomendar `httpx` junto con `starlette.testclient.TestClient`.
-Sin embargo:
-- `httpx` introduce dependencias complejas de transporte HTTP externo y sockets que requieren acceso a la red durante el build o pip install.
-- En un entorno de desarrollo aislado o contenedor seguro (sandbox), la instalación de dependencias no preconfiguradas puede fallar o introducir fricción.
+Para probar los endpoints HTTP con sus encabezados (`X-User-Id`, `Idempotency-Key`), códigos de estado y respuestas JSON sin depender de levantar Docker o un puerto TCP en cada ejecución, utilicé el transporte ASGI de `httpx` conectado directamente a la aplicación FastAPI en [tests/asgi_client.py](../tests/asgi_client.py).
 
-### 5.2. Arquitectura de `tests/asgi_client.py`
-Siguiendo el principio de **Ponytail (minimizar código, complejidad, abstracciones y dependencias)**, se construyó un cliente ASGI asíncrono puro de 100 líneas:
-- Aprovecha la especificación estándar ASGI de Python: `await app(scope, receive, send)`.
-- Ejecuta las peticiones directamente en el bucle de eventos en memoria, sin abrir sockets TCP ni puertos del sistema operativo.
-- **Rendimiento Extraordinario:** Permite ejecutar la batería completa de 85 pruebas unitarias y de integración HTTP en **0.49 segundos**, validando serialización Pydantic v2, inyección de dependencias, excepciones y enrutamiento con total fidelidad.
-
----
-
-## 6. Matriz de Códigos de Estado HTTP y Sanitización de Errores
-
-| Excepción de Dominio | Código HTTP | Justificación Semántica |
-| :--- | :---: | :--- |
-| `AccountNotFoundError`, `CowNotFoundError`, `UserNotFoundError` | **404 Not Found** | La entidad referenciada por UUID no existe en el catálogo bancario. |
-| `UnauthorizedError` | **403 Forbidden** | El usuario autenticado no posee privilegios ni titularidad sobre el recurso. |
-| `IdempotencyConflictError` | **409 Conflict** | Conflicto de payload contra una clave de idempotencia previamente utilizada. |
-| `InsufficientFundsError`, `InvalidAmountError` | **422 Unprocessable** | La petición es sintácticamente válida pero viola invariantes semánticas de saldo o montos positivos. |
-| `SelfTransferError`, `AccountNotActiveError`, `CowNotActiveError` | **400 Bad Request** | Operación inconsistente con el estado operativo del recurso. |
+Esto permite correr toda la suite de validación (actualmente **98 pruebas** unitarias, de API y de concurrencia) en apenas ~1,3 segundos y detectar al instante errores de contrato o fugas de datos.

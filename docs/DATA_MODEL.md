@@ -1,59 +1,27 @@
-# Modelo de Datos e Integridad Financiera — HabiReto
+# Modelo de Datos e Integridad Financiera — HabiReto (Vaqui)
 
-Este documento especifica la arquitectura del modelo de datos relacional para el sistema de transferencias P2P de HabiCapital, el soporte contable de partida doble (Double-Entry Ledger) y el diseño del producto diferenciador **"Vacas" (Fondos Colaborativos)**.
-
----
-
-## 1. Principios de Integridad Financiera
-
-El sistema maneja dinero real. Rige la premisa fundamental: **el sistema no puede perder ni crear un solo peso**.
-
-1. **Representación Monetaria Exacta**:
-   - Todo monto financiero se almacena como un entero de 64 bits (`BIGINT`) representando centavos de peso colombiano (`COP`).
-   - Ejemplo: `$50.000 COP` $\to$ `5000000` centavos.
-   - Prohibido el uso de tipos de coma flotante (`FLOAT`, `DOUBLE`).
-   - Se valida a nivel de schema y constraint que todo monto de transferencia, recarga o aporte sea estrictamente positivo ($amount > 0$).
-
-2. **Control Físico de Sobregiro**:
-   - La tabla `accounts` contiene un constraint físico de integridad:
-     ```sql
-     CONSTRAINT chk_account_balance_non_negative CHECK (balance >= 0)
-     ```
-   - La base de datos misma rechaza físicamente cualquier débito que deje la cuenta en números rojos, actuando como defensa en profundidad ante cualquier fallo en la capa de aplicación.
-
-3. **Prevención de Deadlocks por Concurrencia**:
-   - Todas las operaciones multi-cuenta adquieren bloqueos pesimistas (`SELECT ... FOR UPDATE`) ordenando los identificadores de menor a mayor (`account_id_1 < account_id_2`).
-
-4. **Inmutabilidad Contable (Append-Only Ledger)**:
-   - Los registros de transferencias y asientos contables son inmutables. Nunca se actualiza (`UPDATE`) ni elimina (`DELETE`) un registro histórico.
-   - Toda reversión o compensación se registra como una nueva transacción vinculada a la transacción original.
-
-5. **Idempotencia**:
-   - Cada mutación financiera requiere un header o parámetro `Idempotency-Key` respaldado en la tabla `idempotency_records`.
-   - Peticiones repetidas retornan exactamente la misma respuesta calculada previamente sin re-ejecutar asientos contables.
+Este documento describe las tablas, relaciones y restricciones físicas que sostienen el sistema de transferencias P2P y el módulo de **Vaquitas** en PostgreSQL.
 
 ---
 
-## 2. Diferenciador: "Vacas" (Fondos Colaborativos)
+## 1. Principios del modelo de datos
 
-Una **Vaca** es un fondo transitorio administrado por un titular (`creator_id`) para recaudar un monto objetivo entre múltiples usuarios mediante transferencias directas atómicas.
+- **Números exactos sin coma flotante:** Todos los montos y saldos se guardan en enteros de 64 bits (`BIGINT`) representando pesos colombianos (`COP`) enteros, evitando los errores de redondeo de `float` o `double` (por ejemplo, `$50.000 COP` se guarda como `50000`). Todo monto de transferencia, recarga, aporte o meta debe ser estrictamente mayor que cero.
+- **Restricciones físicas en la base de datos:** Incluso si fallara una validación en Python, PostgreSQL rechaza directamente saldos negativos (`CHECK (balance >= 0)`), saldos posteriores negativos (`CHECK (balance_after >= 0)`) y montos cero o negativos (`CHECK (amount > 0)`).
+- **Cuentas bóveda para Vaquitas (`COW_VAULT`):** Cada Vaquita crea su propia cuenta en la tabla `accounts`. Así, los aportes salen de la cuenta personal del usuario hacia la bóveda, los desembolsos van de la bóveda al creador y los reembolsos salen de la bóveda hacia cada aportante.
+- **Libro mayor inmutable:** Las tablas `transactions` y `ledger_entries` son solo de inserción; nunca se editan ni borran registros históricos. Cada movimiento genera un asiento `DEBIT` y otro `CREDIT` (o `CREDIT` en recargas externas simuladas).
+- **Idempotencia persistida:** La tabla `idempotency_records` guarda la clave `Idempotency-Key`, el resumen SHA-256 del cuerpo de la petición y la respuesta generada para devolver el mismo resultado ante reintentos de red sin ejecutar el movimiento dos veces.
 
-### Arquitectura Contable de una Vaca
-Para garantizar la conservación de saldos ($\sum \text{Balances}_{\text{final}} = \sum \text{Balances}_{\text{initial}}$), cada Vaca posee una **cuenta bóveda propia** (`vault_account_id` con tipo `COW_VAULT`).
-- **Aporte a la Vaca**: Transferencia atómica `Cuenta Usuario` $\to$ `Bóveda de la Vaca`.
-- **Desembolso/Liquidación**: Transferencia atómica `Bóveda de la Vaca` $\to$ `Cuenta Titular / Destino`.
-- **Cancelación/Reembolso**: Transferencias atómicas de reversión de la bóveda hacia cada aportante original.
+---
 
-### Políticas de Visibilidad y Privacidad
+## 2. Reglas de visibilidad en Vaquitas
 
-| Tipo de Visibilidad | Barra de Progreso Global | Lista de Miembros | Visibilidad de Montos Individuales |
+| Tipo de Vaquita | Avance total hacia la meta | Lista de participantes (`members`) | Montos individuales y avisos de aportes |
 | :--- | :--- | :--- | :--- |
-| **Abierta / Pública (`PUBLIC`)** | Visible para todos | Visible con nombres | **Visible para todos**: cada participante ve exactamente quién aportó cuánto. |
-| **Privada / Anónima (`ANONYMOUS`)** | Visible para todos | Visible con nombres | **Estrictamente oculta para terceros e incluso para el Creador**. Solo el propio aportante ve su monto personal. |
+| **Pública (`PUBLIC`)** | Visible para todos | El creador ve a todos los invitados (incluso con `$0`); los invitados ven a quienes ya aportaron (`> $0`). | Todos ven nombre y monto de cada aporte. |
+| **Privada (`ANONYMOUS`)** | Visible para todos | Solo el creador ve a quién invitó (y con el monto de terceros en `null`). Los invitados reciben la lista vacía `[]`. | Cada persona ve únicamente su propio aporte. En el feed de actividad todos ven los montos individuales con `contributor_name = null`. |
 
-> [!IMPORTANT]
-> **Privacidad Absoluta en Vacas Anónimas**:
-> En modo anónimo, **ni siquiera el creador/administrador de la vaca puede ver los montos individuales aportados**. El creador únicamente ve el saldo acumulado global, el progreso hacia la meta y los nombres de los participantes que se unieron. Esto elimina por completo la presión social y el sesgo en colectas sorpresa, regalos o donaciones.
+A nivel contable interno, toda transacción en `transactions` y `ledger_entries` guarda siempre quién originó el movimiento (`source_account_id` y `contributor_user_id` en `metadata_json`), manteniendo la auditoría completa sin exponer esos datos en la respuesta pública de las Vaquitas privadas.
 
 ---
 
@@ -69,7 +37,7 @@ erDiagram
     ACCOUNTS ||--o{ LEDGER_ENTRIES : "has"
     COWS ||--o{ COW_MEMBERS : "contains"
     COWS ||--o{ TRANSACTIONS : "associated with"
-    TRANSACTIONS ||--|{ LEDGER_ENTRIES : "comprises (Double-Entry)"
+    TRANSACTIONS ||--|{ LEDGER_ENTRIES : "comprises"
 
     USERS {
         uuid id PK
@@ -110,7 +78,7 @@ erDiagram
         uuid id PK
         uuid cow_id FK
         uuid user_id FK
-        bigint total_contributed "sum of contributions"
+        bigint total_contributed "CHECK total_contributed >= 0"
         string role "CREATOR | CONTRIBUTOR"
         timestamp joined_at
     }
@@ -125,7 +93,7 @@ erDiagram
         string currency "COP"
         uuid cow_id FK "nullable"
         string description
-        jsonb metadata "context (e.g. category, notes)"
+        jsonb metadata_json "context"
         string status "SUCCESS | FAILED"
         timestamp created_at
     }
@@ -154,88 +122,88 @@ erDiagram
 
 ---
 
-## 4. Especificación Detallada de Tablas
+## 4. Especificación de las 7 tablas
 
 ### 4.1. `users`
-Almacena las identidades del sistema.
-- `id` (UUID, PK): Identificador único.
-- `email` (VARCHAR 255, UNIQUE, NOT NULL): Correo electrónico.
-- `full_name` (VARCHAR 255, NOT NULL): Nombre del titular.
-- `phone_number` (VARCHAR 50, UNIQUE, NOT NULL): Teléfono móvil utilizado para resolver destinatarios de transferencias.
-- `created_at` / `updated_at` (TIMESTAMPTZ, NOT NULL).
+Guarda las personas registradas en la plataforma.
+- `id` (`UUID`, PK): Identificador único.
+- `email` (`VARCHAR(255)`, `UNIQUE`, `NOT NULL`): Correo electrónico normalizado en minúsculas.
+- `full_name` (`VARCHAR(255)`, `NOT NULL`): Nombre completo del titular.
+- `phone_number` (`VARCHAR(50)`, `UNIQUE`, `NOT NULL`): Celular colombiano de 10 dígitos iniciado por `3` (validado en `AccountCreateRequest`).
+- `created_at` / `updated_at` (`TIMESTAMPTZ`, `NOT NULL`).
 
 ### 4.2. `accounts`
-Almacena el estado financiero y balance de cada cuenta (cuentas de usuario o bóvedas de vacas).
-- `id` (UUID, PK).
-- `user_id` (UUID, FK `users.id`, NULLABLE): Propietario de la cuenta (las bóvedas de vacas pueden referenciar al creador o gestionarse a través de la entidad `cows`).
-- `account_number` (VARCHAR 32, UNIQUE, NOT NULL): Identificador contable / IBAN simulado.
-- `account_type` (VARCHAR 20, NOT NULL): `'USER'` o `'COW_VAULT'`.
-- `balance` (BIGINT, NOT NULL, DEFAULT 0): Balance en centavos.
-  - Constraint: `CHECK (balance >= 0)`.
-- `currency` (VARCHAR 3, NOT NULL, DEFAULT `'COP'`).
-- `status` (VARCHAR 20, NOT NULL, DEFAULT `'ACTIVE'`).
-- `created_at` / `updated_at` (TIMESTAMPTZ, NOT NULL).
+Guarda tanto las cuentas personales como las cuentas bóveda de las Vaquitas.
+- `id` (`UUID`, PK).
+- `user_id` (`UUID`, FK `users.id` con `ON DELETE RESTRICT`, `NULLABLE`): Propietario en cuentas personales; `NULL` en bóvedas `COW_VAULT`.
+- `account_number` (`VARCHAR(32)`, `UNIQUE`, `NOT NULL`): Número legible de la cuenta (ej. `ACC-...` o `VAULT-...`).
+- `account_type` (`VARCHAR(20)`, `NOT NULL`): `USER` o `COW_VAULT`.
+- `balance` (`BIGINT`, `NOT NULL`, `DEFAULT 0`): Saldo actual en pesos COP.
+  - Restricción física: `ck_accounts_balance_non_negative` (`balance >= 0`).
+- `currency` (`VARCHAR(3)`, `NOT NULL`, `DEFAULT 'COP'`).
+- `status` (`VARCHAR(20)`, `NOT NULL`, `DEFAULT 'ACTIVE'`): `ACTIVE`, `BLOCKED` o `CLOSED`.
+- `created_at` / `updated_at` (`TIMESTAMPTZ`, `NOT NULL`).
 
 ### 4.3. `cows`
-Representa los fondos colaborativos administrados.
-- `id` (UUID, PK).
-- `creator_id` (UUID, FK `users.id`, NOT NULL): Usuario titular y administrador de la vaca.
-- `vault_account_id` (UUID, FK `accounts.id`, UNIQUE, NOT NULL): Cuenta bóveda dedicada donde reposa la plata recaudada.
-- `title` (VARCHAR 120, NOT NULL): Nombre de la vaca (ej. "Regalo Matrimonio Laura", "Arriendo Noviembre").
-- `description` (TEXT, NULLABLE).
-- `target_amount` (BIGINT, NOT NULL): Meta de recaudación en centavos.
-  - Constraint: `CHECK (target_amount > 0)`.
-- `visibility_type` (VARCHAR 20, NOT NULL): `'PUBLIC'` o `'ANONYMOUS'`.
-- `status` (VARCHAR 20, NOT NULL, DEFAULT `'ACTIVE'`): `'ACTIVE'`, `'COMPLETED'`, `'DISBURSED'`, `'CANCELLED'`.
-- `deadline` (TIMESTAMPTZ, NULLABLE): Fecha límite opcional de recaudo.
-- `created_at` / `updated_at` (TIMESTAMPTZ, NOT NULL).
+Representa cada Vaquita (fondo colaborativo).
+- `id` (`UUID`, PK).
+- `creator_id` (`UUID`, FK `users.id` con `ON DELETE RESTRICT`, `NOT NULL`).
+- `vault_account_id` (`UUID`, FK `accounts.id` con `ON DELETE RESTRICT`, `UNIQUE`, `NOT NULL`): Cuenta bóveda exclusiva de la Vaquita.
+- `title` (`VARCHAR(120)`, `NOT NULL`).
+- `description` (`TEXT`, `NULLABLE`).
+- `target_amount` (`BIGINT`, `NOT NULL`): Meta de recaudo en COP.
+  - Restricción física: `ck_cows_target_amount_positive` (`target_amount > 0`).
+- `visibility_type` (`VARCHAR(20)`, `NOT NULL`, `DEFAULT 'PUBLIC'`): `PUBLIC` o `ANONYMOUS`.
+- `status` (`VARCHAR(20)`, `NOT NULL`, `DEFAULT 'ACTIVE'`): `ACTIVE`, `COMPLETED`, `DISBURSED` o `CANCELLED`.
+- `deadline` (`TIMESTAMPTZ`, `NULLABLE`): Fecha límite opcional.
+- `created_at` / `updated_at` (`TIMESTAMPTZ`, `NOT NULL`).
 
 ### 4.4. `cow_members`
-Registro de miembros participantes y aportes acumulados por vaca.
-- `id` (UUID, PK).
-- `cow_id` (UUID, FK `cows.id` ON DELETE CASCADE, NOT NULL).
-- `user_id` (UUID, FK `users.id`, NOT NULL).
-- `total_contributed` (BIGINT, NOT NULL, DEFAULT 0): Total acumulado aportado por el usuario.
-  - Constraint: `CHECK (total_contributed >= 0)`.
-- `role` (VARCHAR 20, NOT NULL, DEFAULT `'CONTRIBUTOR'`): `'CREATOR'` o `'CONTRIBUTOR'`.
-- `joined_at` (TIMESTAMPTZ, NOT NULL).
-- Constraint de unicidad: `UNIQUE (cow_id, user_id)`.
+Registra quién participa en cada Vaquita y su aporte acumulado.
+- `id` (`UUID`, PK).
+- `cow_id` (`UUID`, FK `cows.id` con `ON DELETE CASCADE`, `NOT NULL`).
+- `user_id` (`UUID`, FK `users.id` con `ON DELETE RESTRICT`, `NOT NULL`).
+- `total_contributed` (`BIGINT`, `NOT NULL`, `DEFAULT 0`).
+  - Restricción física: `ck_cow_members_total_contributed_non_negative` (`total_contributed >= 0`).
+- `role` (`VARCHAR(20)`, `NOT NULL`, `DEFAULT 'CONTRIBUTOR'`): `CREATOR` o `CONTRIBUTOR`.
+- `joined_at` (`TIMESTAMPTZ`, `NOT NULL`).
+- Unicidad: `uq_cow_members_cow_user` (`UNIQUE (cow_id, user_id)`).
 
 ### 4.5. `transactions`
-Registro inmutable del evento de transferencia financiera.
-- `id` (UUID, PK).
-- `idempotency_key` (VARCHAR 255, UNIQUE, NULLABLE).
-- `transaction_type` (VARCHAR 30, NOT NULL): `'TOP_UP'`, `'TRANSFER'`, `'COW_CONTRIBUTION'`, `'COW_DISBURSEMENT'`, `'COW_REFUND'`.
-- `source_account_id` (UUID, FK `accounts.id`, NULLABLE): `NULL` para depósitos simulados externos (`TOP_UP`).
-- `destination_account_id` (UUID, FK `accounts.id`, NOT NULL).
-- `amount` (BIGINT, NOT NULL): Monto en centavos.
-  - Constraint: `CHECK (amount > 0)`.
-- `currency` (VARCHAR 3, NOT NULL, DEFAULT `'COP'`).
-- `cow_id` (UUID, FK `cows.id`, NULLABLE): Vinculación si la transacción pertenece al contexto de una vaca.
-- `description` (VARCHAR 255, NULLABLE).
-- `metadata` (JSONB, NOT NULL, DEFAULT `{}`): Contexto enriquecido (motivo social, categoría, desglose).
-- `status` (VARCHAR 20, NOT NULL, DEFAULT `'SUCCESS'`).
-- `created_at` (TIMESTAMPTZ, NOT NULL).
+Registro maestro e inmutable de cada evento financiero.
+- `id` (`UUID`, PK).
+- `idempotency_key` (`VARCHAR(255)`, `UNIQUE`, `NULLABLE`).
+- `transaction_type` (`VARCHAR(30)`, `NOT NULL`): `TOP_UP`, `TRANSFER`, `COW_CONTRIBUTION`, `COW_DISBURSEMENT` o `COW_REFUND`.
+- `source_account_id` (`UUID`, FK `accounts.id` con `ON DELETE RESTRICT`, `NULLABLE`): `NULL` en recargas externas simuladas (`TOP_UP`).
+- `destination_account_id` (`UUID`, FK `accounts.id` con `ON DELETE RESTRICT`, `NOT NULL`).
+- `amount` (`BIGINT`, `NOT NULL`).
+  - Restricción física: `ck_transactions_amount_positive` (`amount > 0`).
+- `currency` (`VARCHAR(3)`, `NOT NULL`, `DEFAULT 'COP'`).
+- `cow_id` (`UUID`, FK `cows.id` con `ON DELETE SET NULL`, `NULLABLE`).
+- `description` (`VARCHAR(255)`, `NULLABLE`).
+- `metadata_json` (`JSONB`, `NOT NULL`, `DEFAULT '{}'`).
+- `status` (`VARCHAR(20)`, `NOT NULL`, `DEFAULT 'SUCCESS'`).
+- `created_at` (`TIMESTAMPTZ`, `NOT NULL`).
 
 ### 4.6. `ledger_entries`
-Libro mayor contable append-only de doble entrada (Double-Entry).
-- `id` (UUID, PK).
-- `transaction_id` (UUID, FK `transactions.id`, NOT NULL).
-- `account_id` (UUID, FK `accounts.id`, NOT NULL).
-- `entry_type` (VARCHAR 10, NOT NULL): `'DEBIT'` (disminución) o `'CREDIT'` (incremento).
-- `amount` (BIGINT, NOT NULL): Monto del asiento.
-  - Constraint: `CHECK (amount > 0)`.
-- `balance_after` (BIGINT, NOT NULL): Saldo resultante tras aplicar el asiento.
-  - Constraint: `CHECK (balance_after >= 0)`.
-- `created_at` (TIMESTAMPTZ, NOT NULL).
+Asientos contables inmutables asociados a cada transacción.
+- `id` (`UUID`, PK).
+- `transaction_id` (`UUID`, FK `transactions.id` con `ON DELETE RESTRICT`, `NOT NULL`).
+- `account_id` (`UUID`, FK `accounts.id` con `ON DELETE RESTRICT`, `NOT NULL`).
+- `entry_type` (`VARCHAR(10)`, `NOT NULL`): `DEBIT` o `CREDIT`.
+- `amount` (`BIGINT`, `NOT NULL`).
+  - Restricción física: `ck_ledger_entries_amount_positive` (`amount > 0`).
+- `balance_after` (`BIGINT`, `NOT NULL`): Saldo de la cuenta inmediatamente después de aplicar el asiento.
+  - Restricción física: `ck_ledger_entries_balance_after_non_negative` (`balance_after >= 0`).
+- `created_at` (`TIMESTAMPTZ`, `NOT NULL`).
 
 ### 4.7. `idempotency_records`
-Almacén de peticiones mutantes para evitar duplicación ante reintentos de red.
-- `key` (VARCHAR 255, PK): Llave provista por el cliente (`Idempotency-Key`).
-- `user_id` (UUID, FK `users.id`, NOT NULL).
-- `request_path` (VARCHAR 255, NOT NULL).
-- `request_hash` (VARCHAR 64, NOT NULL): SHA-256 del cuerpo de la petición.
-- `response_status` (INTEGER, NOT NULL).
-- `response_body` (JSONB, NOT NULL).
-- `created_at` (TIMESTAMPTZ, NOT NULL).
-- `expires_at` (TIMESTAMPTZ, NOT NULL).
+Almacén de respuestas cacheadas para evitar duplicados ante reintentos de red.
+- `key` (`VARCHAR(255)`, PK).
+- `user_id` (`UUID`, FK `users.id` con `ON DELETE RESTRICT`, `NOT NULL`).
+- `request_path` (`VARCHAR(255)`, `NOT NULL`).
+- `request_hash` (`VARCHAR(64)`, `NOT NULL`): Resumen SHA-256 canónico del payload.
+- `response_status` (`INTEGER`, `NOT NULL`).
+- `response_body` (`JSONB`, `NOT NULL`).
+- `created_at` (`TIMESTAMPTZ`, `NOT NULL`).
+- `expires_at` (`TIMESTAMPTZ`, `NOT NULL`).
