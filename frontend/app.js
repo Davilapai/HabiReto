@@ -11,7 +11,6 @@ import { api } from "./js/api.js";
 import { initDashboard, reloadDashboard } from "./js/components/dashboard.js";
 import { initIdentitySelector } from "./js/components/identity_selector.js";
 import { initCows, reloadCows } from "./js/components/cows.js";
-import { initPrivacyInspector } from "./js/components/privacy_inspector.js";
 import { initHistory, reloadHistory } from "./js/components/history.js";
 import { showToast } from "./js/components/toast.js";
 import { store } from "./js/state.js";
@@ -57,10 +56,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // 3. Inicializar Módulo de Vaquitas colaborativas y asistente de 4 pasos
   initCows("cowsRoot");
 
-  // 4. Inicializar Inspector de Privacidad Zero-Trust en tiempo real
-  initPrivacyInspector("privacyInspectorRoot");
-
-  // 5. Inicializar Módulo de Movimientos / Libro Mayor de partida doble
+  // 4. Inicializar Módulo de Movimientos / Libro Mayor de partida doble
   initHistory("historyRoot");
 
   // 6. Sincronizar directorio de usuarios registrados desde el backend
@@ -432,7 +428,10 @@ document.addEventListener("DOMContentLoaded", () => {
                                 <input
                                   type="tel"
                                   id="welcomeSignupPhone"
-                                  placeholder="Ej. 300 123 4567"
+                                  maxlength="10"
+                                  inputmode="numeric"
+                                  pattern="3[0-9]{9}"
+                                  placeholder="Ej. 3001234567"
                                   required
                                   class="w-full bg-surface-container-low text-on-surface border border-surface-border px-4 py-2.5 rounded-xl text-sm font-medium focus:outline-none focus:border-primary focus:bg-white transition-all tabular-nums"
                                 />
@@ -640,16 +639,30 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Submit Registro de nueva cuenta desde Welcome
+    const welcomePhoneInput = welcomeSection.querySelector("#welcomeSignupPhone");
+    if (welcomePhoneInput) {
+      welcomePhoneInput.addEventListener("input", (e) => {
+        e.target.value = e.target.value.replace(/\D/g, "").slice(0, 10);
+      });
+    }
+
     const signupForm = welcomeSection.querySelector("#welcomeSignupForm");
     if (signupForm) {
       signupForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const fullName = (welcomeSection.querySelector("#welcomeSignupName")?.value || "").trim();
         const email = (welcomeSection.querySelector("#welcomeSignupEmail")?.value || "").trim();
-        const phone = (welcomeSection.querySelector("#welcomeSignupPhone")?.value || "").trim();
+        const phone = (welcomeSection.querySelector("#welcomeSignupPhone")?.value || "").replace(/\s+/g, "").trim();
 
         if (!fullName || !email || !phone) {
           showToast("Completa todos los campos requeridos", "error");
+          return;
+        }
+        if (!/^3\d{9}$/.test(phone)) {
+          showToast(
+            "El número de celular debe tener exactamente 10 dígitos e iniciar por 3 (ej. 3001234567)",
+            "warning"
+          );
           return;
         }
 
@@ -660,7 +673,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const created = await api.createUser({
             full_name: fullName,
             email,
-            phone,
+            phone_number: phone,
             initial_balance: 50000,
           });
           store.addUser(created);
@@ -752,7 +765,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 <div class="py-3.5 flex items-center justify-between gap-4">
                   <span class="text-xs font-semibold text-[#5e6660] uppercase tracking-wider">Celular</span>
-                  <span class="text-sm font-medium text-[#171d1a] font-mono tabular-nums">${active.phone || "+57 300 000 0000"}</span>
+                  <span class="text-sm font-medium text-[#171d1a] font-mono tabular-nums">${(active.phone || "3000000000").replace(/^\+?57\s*/, "")}</span>
                 </div>
 
                 <div class="py-3.5 flex items-center justify-between gap-4">
@@ -934,13 +947,16 @@ document.addEventListener("DOMContentLoaded", () => {
                   </div>
 
                   <div class="space-y-1.5">
-                    <label for="regPhone" class="block text-xs font-bold uppercase tracking-wider text-[#171d1a]">Celular (WhatsApp / SMS)</label>
+                    <label for="regPhone" class="block text-xs font-bold uppercase tracking-wider text-[#171d1a]">Celular (10 dígitos)</label>
                     <div class="relative">
                       <span class="material-symbols-outlined text-[#5e6660] text-[18px] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">call</span>
                       <input
                         type="tel"
                         id="regPhone"
-                        placeholder="+573004445555"
+                        maxlength="10"
+                        inputmode="numeric"
+                        pattern="3[0-9]{9}"
+                        placeholder="3004445555"
                         required
                         class="w-full pl-10 pr-3.5 py-2.5 text-sm rounded-xl bg-[#f5f1ea] border border-[#dfd9ce] text-[#171d1a] placeholder:text-[#9a9e9b] focus:outline-none focus:border-[#4a7c59] focus:bg-white font-mono tabular-nums transition-all"
                       />
@@ -1029,17 +1045,31 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Enviar formulario de registro de nueva persona
+    const regPhoneInput = root.querySelector("#regPhone");
+    if (regPhoneInput) {
+      regPhoneInput.addEventListener("input", (e) => {
+        e.target.value = e.target.value.replace(/\D/g, "").slice(0, 10);
+      });
+    }
+
     const regForm = root.querySelector("#settingsRegisterForm");
     if (regForm) {
       regForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const fullName = (root.querySelector("#regFullName")?.value || "").trim();
         const email = (root.querySelector("#regEmail")?.value || "").trim();
-        const phone = (root.querySelector("#regPhone")?.value || "").trim();
+        const phone = (root.querySelector("#regPhone")?.value || "").replace(/\s+/g, "").trim();
         const initialBalance = Number(root.querySelector("#regInitialBalance")?.value || 50000);
 
         if (!fullName || !email || !phone) {
           showToast("Por favor completa nombre, correo y celular", "error");
+          return;
+        }
+        if (!/^3\d{9}$/.test(phone)) {
+          showToast(
+            "El número de celular debe tener exactamente 10 dígitos e iniciar por 3 (ej. 3004445555)",
+            "warning"
+          );
           return;
         }
 
@@ -1050,7 +1080,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const created = await api.createUser({
             full_name: fullName,
             email,
-            phone,
+            phone_number: phone,
             initial_balance: initialBalance >= 0 ? initialBalance : 0,
           });
           store.addUser(created);

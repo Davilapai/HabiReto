@@ -409,7 +409,7 @@ export function initDashboard(containerId) {
                 value="${cleanKeyVal}"
                 placeholder="BOB222"
                 required
-                class="w-full bg-transparent py-4 pl-0 pr-4 text-lg font-bold font-mono text-[#1a201c] focus:outline-none placeholder-[#9aa69e] uppercase tabular-nums"
+                class="w-full bg-transparent border-0 py-4 pl-0 pr-4 text-lg font-bold font-mono text-[#1a201c] focus:outline-none focus:ring-0 placeholder-[#9aa69e] uppercase tabular-nums"
               />
               <div id="recipientMatchBadge" class="pr-4 flex items-center gap-1.5 shrink-0">
                 ${
@@ -471,7 +471,7 @@ export function initDashboard(containerId) {
                   value="${draftTransferAmount}"
                   placeholder="50000"
                   required
-                  class="bg-transparent text-2xl sm:text-3xl font-extrabold font-heading text-[#161d19] focus:outline-none w-full tracking-tight tabular-nums"
+                  class="bg-transparent border-0 text-2xl sm:text-3xl font-extrabold font-heading text-[#161d19] focus:outline-none focus:ring-0 w-full tracking-tight tabular-nums"
                 />
               </div>
               <span class="text-xs font-extrabold font-mono text-[#6e7d73] uppercase tracking-wider bg-white/80 px-3 py-1.5 rounded-xl border border-[#ded7cb]">
@@ -493,7 +493,7 @@ export function initDashboard(containerId) {
                 maxlength="100"
                 value="${draftTransferMotive}"
                 placeholder="Ej. Almuerzo con amigos"
-                class="w-full bg-transparent py-3.5 px-4 text-sm font-medium text-[#1a201c] placeholder-[#8a988f] focus:outline-none"
+                class="w-full bg-transparent border-0 py-3.5 px-4 text-sm font-medium text-[#1a201c] placeholder-[#8a988f] focus:outline-none focus:ring-0"
               />
             </div>
           </div>
