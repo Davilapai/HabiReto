@@ -7,6 +7,7 @@ trazas de depuración, consultas SQL ni estructuras de base de datos al cliente.
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from habireto.core.exceptions import (
     AccountNotActiveError,
@@ -15,6 +16,7 @@ from habireto.core.exceptions import (
     CowNotActiveError,
     CowNotFoundError,
     CurrencyMismatchError,
+    DuplicateUserError,
     FinancialDomainError,
     IdempotencyConflictError,
     InsufficientFundsError,
@@ -51,12 +53,23 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(IdempotencyConflictError)
-    async def idempotency_conflict_handler(request: Request, exc: IdempotencyConflictError) -> JSONResponse:
+    @app.exception_handler(DuplicateUserError)
+    async def conflict_handler(request: Request, exc: FinancialDomainError) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={
                 "detail": str(exc),
                 "error_type": exc.__class__.__name__,
+            },
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": "El correo electrónico o el número de celular ya se encuentra registrado en otra cuenta.",
+                "error_type": "IntegrityError",
             },
         )
 

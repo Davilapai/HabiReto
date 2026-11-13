@@ -10,6 +10,52 @@ import { store } from "./state.js";
 const BASE_URL = "/api/v1";
 
 /**
+ * Extrae un mensaje de error legible en español a partir de la respuesta de FastAPI.
+ *
+ * @param {any} data - Cuerpo de la respuesta de error.
+ * @param {number} status - Código de estado HTTP.
+ * @returns {string} Mensaje formateado listo para mostrar al usuario.
+ */
+function extractErrorMessage(data, status) {
+  if (!data) return `Error HTTP ${status}`;
+  if (typeof data === "string") return data;
+
+  const detail = data.detail !== undefined ? data.detail : data.message;
+  if (typeof detail === "string") return detail;
+
+  if (Array.isArray(detail)) {
+    const fieldLabels = {
+      full_name: "nombre completo",
+      email: "correo electrónico",
+      phone_number: "número de celular",
+      initial_balance: "saldo inicial",
+      amount: "monto",
+      target_amount: "meta a recaudar",
+      title: "nombre de la vaquita",
+    };
+    const messages = detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          const loc = Array.isArray(item.loc) ? item.loc[item.loc.length - 1] : "";
+          const label = fieldLabels[loc] || loc;
+          const msg = item.msg || "Valor inválido";
+          return label ? `Campo «${label}»: ${msg}` : msg;
+        }
+        return "";
+      })
+      .filter(Boolean);
+    if (messages.length > 0) return messages.join(" · ");
+  }
+
+  if (detail && typeof detail === "object") {
+    return detail.message || detail.msg || JSON.stringify(detail);
+  }
+
+  return `Error HTTP ${status}`;
+}
+
+/**
  * Realiza una petición HTTP aplicando cabeceras estándar de autenticación mock e idempotencia.
  */
 async function request(endpoint, options = {}) {
@@ -40,7 +86,7 @@ async function request(endpoint, options = {}) {
     }
 
     if (!res.ok) {
-      const errorMsg = (data && data.detail) || (typeof data === "string" ? data : `Error HTTP ${res.status}`);
+      const errorMsg = extractErrorMessage(data, res.status);
       const err = new Error(errorMsg);
       err.status = res.status;
       err.data = data;
@@ -62,10 +108,17 @@ export const api = {
     return await request("/users", { method: "GET" });
   },
 
-  async createUser(data) {
+  async createUser(data = {}) {
+    const payload = {
+      full_name: String(data.full_name || "").trim(),
+      email: String(data.email || "").trim(),
+      phone_number: String(data.phone_number || data.phone || "").trim(),
+      initial_balance:
+        data.initial_balance !== undefined ? Number(data.initial_balance) : 50000,
+    };
     return await request("/users", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     });
   },
 
@@ -166,6 +219,17 @@ export function formatCOP(amount) {
   return new Intl.NumberFormat("es-CO", {
     style: "currency",
     currency: "COP",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(num);
+}
+
+/**
+ * Formatea un número entero con separadores de miles colombianos sin símbolo monetario.
+ */
+export function formatNumber(amount) {
+  const num = Number(amount) || 0;
+  return new Intl.NumberFormat("es-CO", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(num);

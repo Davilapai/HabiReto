@@ -8,12 +8,14 @@ persona a persona con prevención matemática de deadlocks y consulta de saldos 
 import uuid
 from typing import Any
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from habireto.core.exceptions import (
     AccountNotActiveError,
     AccountNotFoundError,
     CurrencyMismatchError,
+    DuplicateUserError,
     InsufficientFundsError,
     InvalidAmountError,
     SelfTransferError,
@@ -79,13 +81,30 @@ class AccountService:
         if initial_balance < 0:
             raise InvalidAmountError("El saldo inicial de la cuenta no puede ser negativo.")
 
+        clean_email = email.strip().lower()
+        clean_phone = phone_number.strip()
+
         user = User(
-            email=email,
-            full_name=full_name,
-            phone_number=phone_number,
+            email=clean_email,
+            full_name=full_name.strip(),
+            phone_number=clean_phone,
         )
         session.add(user)
-        await session.flush()
+        try:
+            await session.flush()
+        except IntegrityError as exc:
+            err_text = str(exc).lower()
+            if "phone_number" in err_text:
+                raise DuplicateUserError(
+                    f"Ya existe una cuenta registrada con el número de celular '{clean_phone}'."
+                ) from exc
+            if "email" in err_text:
+                raise DuplicateUserError(
+                    f"Ya existe una cuenta registrada con el correo electrónico '{clean_email}'."
+                ) from exc
+            raise DuplicateUserError(
+                "El correo electrónico o el número de celular ya se encuentra registrado."
+            ) from exc
 
         account = Account(
             user_id=user.id,

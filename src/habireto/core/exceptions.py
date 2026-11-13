@@ -122,3 +122,9 @@ class UserNotFoundError(FinancialDomainError):
     """Lanzada cuando un usuario referenciado no existe en el registro del sistema."""
 
     pass
+
+
+class DuplicateUserError(FinancialDomainError):
+    """Lanzada cuando se intenta registrar un correo electrónico o número de celular ya existente."""
+
+    pass

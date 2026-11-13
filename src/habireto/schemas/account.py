@@ -6,7 +6,8 @@ recargas simuladas de saldo, consulta de saldos y extractos de auditoría.
 
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Any
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AccountCreateRequest(BaseModel):
@@ -26,15 +27,26 @@ class AccountCreateRequest(BaseModel):
     )
     phone_number: str = Field(
         ...,
-        description="Número de teléfono celular para transferencias persona a persona.",
-        min_length=7,
-        max_length=50,
+        description="Número de celular colombiano de 10 dígitos que inicia por 3 (sin indicativo +57).",
+        min_length=10,
+        max_length=10,
     )
     initial_balance: int = Field(
         default=0,
         ge=0,
         description="Saldo inicial en centavos COP para apertura (por defecto 0).",
     )
+
+    @field_validator("phone_number", mode="before")
+    @classmethod
+    def validate_colombian_phone(cls, v: Any) -> str:
+        """Valida que el celular tenga exactamente 10 dígitos numéricos e inicie por 3."""
+        clean = str(v or "").strip()
+        if len(clean) != 10 or not clean.isdigit() or not clean.startswith("3"):
+            raise ValueError(
+                "El número de celular debe tener exactamente 10 dígitos numéricos e iniciar por 3 (sin +57)."
+            )
+        return clean
 
 
 class AccountResponse(BaseModel):

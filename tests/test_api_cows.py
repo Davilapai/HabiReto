@@ -23,12 +23,16 @@ class TestApiCows(unittest.IsolatedAsyncioTestCase):
         self.client = ASGIClient(self.app)
 
     async def _create_user_and_account(self, name: str, email: str, phone: str, balance: int = 1000000) -> dict[str, str]:
+        digits = "".join(c for c in phone if c.isdigit())
+        if digits.startswith("57") and len(digits) > 10:
+            digits = digits[2:]
+        normalized_phone = ("3" + digits.lstrip("3")).ljust(10, "0")[:10]
         res = await self.client.post(
             "/api/v1/accounts",
             json={
                 "email": email,
                 "full_name": name,
-                "phone_number": phone,
+                "phone_number": normalized_phone,
                 "initial_balance": balance,
             },
         )

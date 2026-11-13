@@ -33,19 +33,19 @@ class TestCowInvitationsAndVisibility(unittest.IsolatedAsyncioTestCase):
         # Crear cuentas para Alice, Bob y Charlie
         res_a = await self.client.post(
             "/accounts",
-            json={"email": "alice@test.com", "full_name": "Alice", "phone_number": "+573001111111", "initial_balance": 100000},
+            json={"email": "alice@test.com", "full_name": "Alice", "phone_number": "3001111111", "initial_balance": 100000},
         )
         self.alice = res_a.json()
 
         res_b = await self.client.post(
             "/accounts",
-            json={"email": "bob@test.com", "full_name": "Bob", "phone_number": "+573002222222", "initial_balance": 50000},
+            json={"email": "bob@test.com", "full_name": "Bob", "phone_number": "3002222222", "initial_balance": 50000},
         )
         self.bob = res_b.json()
 
         res_c = await self.client.post(
             "/accounts",
-            json={"email": "charlie@test.com", "full_name": "Charlie", "phone_number": "+573003333333", "initial_balance": 20000},
+            json={"email": "charlie@test.com", "full_name": "Charlie", "phone_number": "3003333333", "initial_balance": 20000},
         )
         self.charlie = res_c.json()
 
@@ -102,7 +102,7 @@ class TestCowInvitationsAndVisibility(unittest.IsolatedAsyncioTestCase):
             json={
                 "email": "pedro@test.com",
                 "full_name": "Pedro Picapiedra",
-                "phone_number": "+573009999999",
+                "phone_number": "3009999999",
                 "initial_balance": 30000,
             },
         )
