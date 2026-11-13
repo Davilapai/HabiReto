@@ -1045,6 +1045,12 @@ export function initCows(containerId) {
       };
       viewMode = "create";
       render(store.getState());
+      api
+        .listUsers()
+        .then((users) => {
+          if (users && users.length > 0) store.setUsers(users);
+        })
+        .catch(() => {});
     };
 
     const btnOpenCreateCow = container.querySelector("#btnOpenCreateCow");
@@ -1179,9 +1185,19 @@ export function initCows(containerId) {
         showToast("Ya eres el organizador de esta vaquita", "warning");
         return false;
       }
-      if (!createDraft.invitedKeys.includes(clean)) {
-        createDraft.invitedKeys.push(clean);
+      const registeredUsers = store.getUsers() || [];
+      const matchedUser = registeredUsers.find(
+        (u) => (u.userKey || "").toUpperCase() === clean
+      );
+      if (!matchedUser) {
+        showToast(`No existe ninguna persona registrada con la llave ${clean}`, "error");
+        return false;
       }
+      if (createDraft.invitedKeys.includes(clean)) {
+        showToast(`${matchedUser.name} (${clean}) ya está en la lista de participantes`, "warning");
+        return false;
+      }
+      createDraft.invitedKeys.push(clean);
       if (inviteKeyInput) inviteKeyInput.value = "";
       render(store.getState());
       return true;

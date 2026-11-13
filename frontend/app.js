@@ -799,22 +799,6 @@ document.addEventListener("DOMContentLoaded", () => {
                   </div>
                 </div>
               </div>
-
-              <div class="px-6 py-3.5 bg-[#f5f1ea]/60 border-t border-[#e6e1d8] flex items-center gap-2 text-xs text-[#5e6660]">
-                <span class="material-symbols-outlined text-[#4a7c59] text-[16px]">shield_lock</span>
-                <span>Tus datos bancarios están protegidos bajo custodia auditada</span>
-              </div>
-            </div>
-
-            <!-- Nota informativa de interoperabilidad -->
-            <div class="bg-[#e8f2eb]/70 rounded-2xl p-5 border border-[#c8e0cf] flex items-start gap-3.5">
-              <div class="w-9 h-9 rounded-xl bg-white border border-[#c8e0cf] flex items-center justify-center text-[#4a7c59] shrink-0 mt-0.5">
-                <span class="material-symbols-outlined text-[20px]">lightbulb</span>
-              </div>
-              <div class="text-xs text-[#2e3230] leading-relaxed">
-                <p class="font-bold text-[#171d1a] uppercase tracking-wider mb-0.5">Tip de Interoperabilidad</p>
-                Cualquier usuario de la red Bre-B en Colombia puede enviarte transferencias directas sin costo utilizando únicamente tu llave <strong class="text-[#171d1a] font-mono">${active.userKey || "@ALI111"}</strong>.
-              </div>
             </div>
           </div>
 
