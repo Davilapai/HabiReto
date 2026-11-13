@@ -1,25 +1,55 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vaqui — HabiReto Fintech Social</title>
 
-  <!-- Tipografías del Sistema Terra: Outfit, Nunito Sans y JetBrains Mono -->
+  <!-- Tipografías del Sistema Terra / Stitch: Outfit, Nunito, Nunito Sans, Plus Jakarta Sans y JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Nunito+Sans:ital,opsz,wght@0,6..12,300..900;1,6..12,300..900&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Nunito+Sans:ital,opsz,wght@0,6..12,300..900;1,6..12,300..900&family=Nunito:wght@400;500;600;700;800;900&family=Outfit:wght@500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Iconografía Material Symbols Outlined -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
 
-  <!-- Utilidades Tailwind CSS con configuración de paleta Terra -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Utilidades Tailwind CSS con todos los tokens semánticos de Stitch Terra -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <script>
     tailwind.config = {
+      darkMode: "class",
       theme: {
         extend: {
           colors: {
+            "background": "#f9f8f5",
+            "surface": "#FAF6F0",
+            "surface-dim": "#F4EFE6",
+            "surface-container": "#FFFFFF",
+            "surface-container-low": "#F7F3EC",
+            "surface-container-lowest": "#FFFFFF",
+            "surface-container-high": "#EFEAE1",
+            "surface-container-highest": "#E6E0D4",
+            "surface-border": "#E8E2D8",
+            "on-surface": "#252A26",
+            "on-surface-variant": "#676F67",
+            "primary": "#4A7C59",
+            "primary-container": "#e8f1eb",
+            "primary-hover": "#3E6A4B",
+            "primary-light": "#E9F2EC",
+            "primary-fixed": "#c8e8d0",
+            "primary-fixed-dim": "#3B6849",
+            "on-primary-fixed-variant": "#2a6038",
+            "on-primary": "#FFFFFF",
+            "on-primary-container": "#20462c",
+            "secondary": "#7D7465",
+            "secondary-container": "#F2EBE0",
+            "on-secondary-container": "#4a4538",
+            "tertiary": "#705c30",
+            "tertiary-container": "#f7edd8",
+            "outline": "#D7D0C3",
+            "outline-variant": "#E8E2D8",
+            "error": "#b83230",
+            "error-container": "#fdf1f0",
             terra: {
               primary: '#4a7c59',
               primaryHover: '#3d6749',
@@ -29,9 +59,11 @@
               bg: '#f9f8f5',
               surface: '#ffffff',
               container: '#f5f1ea',
-              containerLow: '#fbf9f6',
+              containerLow: '#f5f1ea',
+              containerLowest: '#ffffff',
               border: '#eae5db',
               textMain: '#191c1d',
+              textPrimary: '#191c1d',
               textMuted: '#5d645e',
               textSubtle: '#788179',
               debit: '#b83230',
@@ -40,13 +72,33 @@
               amber: '#8e5b22',
               amberBg: '#fdf5eb',
               amberBorder: '#fae2c8',
+            },
+            brand: {
+              DEFAULT: '#4a7c59',
+              hover: '#3d6749',
+              dark: '#20462c',
+              light: '#e8f1eb',
+              soft: '#f1f7f3',
+              50: '#f2f7f4',
+              100: '#e1ede4',
+              200: '#c5ddcd',
+              300: '#9ec4aa',
+              400: '#73a582',
+              500: '#4a7c59',
+              600: '#3c6748',
+              700: '#32523b',
+              800: '#2a4231',
+              900: '#203628',
+              950: '#111f17',
             }
           },
           fontFamily: {
-            sans: ['"Nunito Sans"', 'sans-serif'],
-            heading: ['"Outfit"', 'sans-serif'],
-            headline: ['"Outfit"', 'sans-serif'],
-            display: ['"Outfit"', 'sans-serif'],
+            sans: ['"Nunito Sans"', '"Nunito"', 'sans-serif'],
+            body: ['"Plus Jakarta Sans"', '"Nunito Sans"', '"Nunito"', 'sans-serif'],
+            heading: ['"Outfit"', '"Plus Jakarta Sans"', 'sans-serif'],
+            headline: ['"Outfit"', '"Plus Jakarta Sans"', '"Nunito"', 'sans-serif'],
+            display: ['"Outfit"', '"Plus Jakarta Sans"', '"Nunito"', 'sans-serif'],
+            metric: ['"Outfit"', '"Nunito"', 'sans-serif'],
             mono: ['"JetBrains Mono"', 'monospace'],
           }
         }
@@ -55,20 +107,21 @@
   </script>
 
   <!-- Sistema de Estilos Terra / Vaqui -->
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=terra2">
 </head>
 <body class="min-h-screen bg-[#f9f8f5] text-[#191c1d] antialiased selection:bg-[#4a7c59] selection:text-white">
 
   <!-- =====================================================================
-       VISTA 0: BIENVENIDA Y ACCESO ("Esto es Vaqui")
-       Se muestra al cerrar sesión o mediante conmutación explícita.
+       VISTA 0 (INICIAL POR DEFECTO): BIENVENIDA Y ACCESO ("Esto es Vaqui.")
+       Se muestra inmediatamente al entrar a http://localhost:3000/
        ===================================================================== -->
-  <div id="welcomeSection" class="hidden"></div>
+  <div id="welcomeSection"></div>
 
   <!-- =====================================================================
        APP SHELL PRINCIPAL (Sidebar Fijo + Header + Área de Vistas)
+       Se muestra tras iniciar sesión o crear cuenta desde la portada.
        ===================================================================== -->
-  <div id="appShell" class="min-h-screen flex bg-[#f9f8f5]">
+  <div id="appShell" class="hidden min-h-screen flex bg-[#f9f8f5]">
 
     <!-- Sidebar Izquierdo Fijo (w-64) -->
     <aside class="w-64 bg-white border-r border-[#eae5db] flex flex-col justify-between fixed top-0 bottom-0 left-0 z-30 select-none shadow-[1px_0_12px_rgba(0,0,0,0.02)]" id="appSidebar" aria-label="Menú Principal">
@@ -131,7 +184,7 @@
         </nav>
       </div>
 
-      <!-- Botón Inferior: Cerrar sesión (lleva a la pantalla de Bienvenida) -->
+      <!-- Botón Inferior: Cerrar sesión (regresa a la portada de Bienvenida) -->
       <div class="p-4 border-t border-[#eae5db]/60 bg-white">
         <button type="button" id="btnLogoutWelcome" class="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-[#f5f1ea] hover:bg-[#eae5db] text-[#5d645e] hover:text-[#191c1d] font-semibold text-sm transition-all group cursor-pointer border-0">
           <div class="flex items-center gap-3">
@@ -196,6 +249,6 @@
   <div id="toast-container"></div>
 
   <!-- Controlador Principal SPA -->
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=terra2"></script>
 </body>
 </html>
