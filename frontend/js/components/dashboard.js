@@ -45,7 +45,6 @@ export function initDashboard(containerId) {
 
   // Estado local de interacción de la vista Inicio
   let activeAction = "recharge"; // 'recharge' | 'transfer'
-  let selectedMethod = "pse"; // 'pse' | 'card' | 'transfer'
   let isBalanceHidden = false;
   let isSubmittingLoad = false;
   let isSubmittingTransfer = false;
@@ -258,12 +257,6 @@ export function initDashboard(containerId) {
    * Renderiza el panel derecho para Recargar saldo (Diseño Stitch: inicio_recargar_habireto).
    */
   function renderRechargePanel() {
-    const methods = [
-      { id: "pse", label: "PSE", sub: "Débito bancario", icon: "account_balance" },
-      { id: "card", label: "Tarjeta", sub: "Débito o crédito", icon: "credit_card" },
-      { id: "transfer", label: "Bre-B", sub: "Llave interoperable", icon: "bolt" },
-    ];
-
     return `
       <div class="bg-white rounded-3xl p-7 sm:p-8 border border-[#e8e3da] shadow-sm flex flex-col gap-6">
         <!-- Encabezado del Panel -->
@@ -277,41 +270,7 @@ export function initDashboard(containerId) {
         </div>
 
         <form id="loadBalanceForm" class="space-y-6">
-          <!-- 1. Método de recarga simulada -->
-          <div>
-            <span class="text-[11px] font-bold uppercase tracking-wider text-[#6b6358] font-heading block mb-2.5">
-              Canal de recarga
-            </span>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              ${methods
-                .map(
-                  (m) => `
-                  <button
-                    type="button"
-                    data-method="${m.id}"
-                    class="method-card flex items-center gap-3 p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
-                      selectedMethod === m.id
-                        ? "border-[#4a7c59] bg-[#e8f1eb]/60 text-[#191c1d] shadow-xs"
-                        : "border-[#eae5db] bg-[#f5f1ea]/60 hover:bg-[#f5f1ea] text-[#5d645e]"
-                    }"
-                  >
-                    <div class="w-9 h-9 rounded-xl ${
-                      selectedMethod === m.id ? "bg-[#4a7c59] text-white" : "bg-white text-[#4a7c59]"
-                    } flex items-center justify-center shrink-0">
-                      <span class="material-symbols-outlined text-[19px]">${m.icon}</span>
-                    </div>
-                    <div class="min-w-0">
-                      <div class="text-xs font-extrabold font-heading text-[#191c1d]">${m.label}</div>
-                      <div class="text-[11px] text-[#5d645e] truncate">${m.sub}</div>
-                    </div>
-                  </button>
-                `
-                )
-                .join("")}
-            </div>
-          </div>
-
-          <!-- 2. Monto a Recargar -->
+          <!-- Monto a Recargar -->
           <div class="space-y-2.5">
             <label class="text-[11px] font-bold uppercase tracking-wider text-[#6b6358] font-heading block" for="loadAmountInput">
               Monto a recargar
@@ -570,13 +529,6 @@ export function initDashboard(containerId) {
     }
 
     // Eventos del panel Recargar
-    container.querySelectorAll(".method-card").forEach((card) => {
-      card.addEventListener("click", () => {
-        selectedMethod = card.getAttribute("data-method") || "pse";
-        render(store.getState());
-      });
-    });
-
     const loadAmountInput = container.querySelector("#loadAmountInput");
     if (loadAmountInput) {
       loadAmountInput.addEventListener("input", (e) => {
