@@ -36,7 +36,7 @@ class TestApiTransfers(unittest.IsolatedAsyncioTestCase):
             json={
                 "email": "camila@test.com",
                 "full_name": "Camila Osorio",
-                "phone_number": "+573010000001",
+                "phone_number": "3010000001",
                 "initial_balance": 500000,
             },
         )
@@ -45,7 +45,7 @@ class TestApiTransfers(unittest.IsolatedAsyncioTestCase):
             json={
                 "email": "felipe@test.com",
                 "full_name": "Felipe Naranjo",
-                "phone_number": "+573010000002",
+                "phone_number": "3010000002",
                 "initial_balance": 100000,
             },
         )

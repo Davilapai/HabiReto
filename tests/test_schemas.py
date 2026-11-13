@@ -33,11 +33,23 @@ class TestSchemasValidation(unittest.TestCase):
         req = AccountCreateRequest(
             email="maria@banco.com",
             full_name="María Pérez",
-            phone_number="+573109998877",
+            phone_number="3109998877",
             initial_balance=500000,
         )
         self.assertEqual(req.email, "maria@banco.com")
+        self.assertEqual(req.phone_number, "3109998877")
         self.assertEqual(req.initial_balance, 500000)
+
+    def test_account_create_invalid_phone_rejected(self) -> None:
+        """Verifica que celulares con +57, longitud distinta de 10 o que no inicien por 3 sean rechazados."""
+        for invalid_phone in ["+573109998877", "2109998877", "300123456", "30012345678", "300123456a"]:
+            with self.assertRaises(ValidationError):
+                AccountCreateRequest(
+                    email="maria@banco.com",
+                    full_name="María Pérez",
+                    phone_number=invalid_phone,
+                    initial_balance=50000,
+                )
 
     def test_account_create_negative_balance_rejected(self) -> None:
         """Verifica que un saldo inicial negativo sea rechazado por el esquema."""
@@ -45,7 +57,7 @@ class TestSchemasValidation(unittest.TestCase):
             AccountCreateRequest(
                 email="maria@banco.com",
                 full_name="María Pérez",
-                phone_number="+573109998877",
+                phone_number="3109998877",
                 initial_balance=-1000,
             )
 

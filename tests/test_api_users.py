@@ -34,7 +34,7 @@ class TestApiUsers(unittest.IsolatedAsyncioTestCase):
             json={
                 "email": "diana@habireto.com",
                 "full_name": "Diana Morales",
-                "phone_number": "+573004445555",
+                "phone_number": "3004445555",
                 "initial_balance": 80000,
             },
         )
@@ -42,7 +42,7 @@ class TestApiUsers(unittest.IsolatedAsyncioTestCase):
         data = res.json()
         self.assertEqual(data["full_name"], "Diana Morales")
         self.assertEqual(data["email"], "diana@habireto.com")
-        self.assertEqual(data["phone_number"], "+573004445555")
+        self.assertEqual(data["phone_number"], "3004445555")
         self.assertEqual(data["balance"], 80000)
         self.assertIsNotNone(data["account_id"])
         self.assertTrue(data["account_number"].startswith("ACC-"))
